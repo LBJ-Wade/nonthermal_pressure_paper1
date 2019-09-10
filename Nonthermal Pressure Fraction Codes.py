@@ -114,7 +114,7 @@ plt.ylabel(r'$t_\mathrm{d}$ [Gyr]')
 # need to check later results to see if they actually use beta*t_dyn / 2 or beta*t_dyn for further stuff
 
 
-# In[144]:
+# In[160]:
 
 
 # Komatsu and Seljak Model
@@ -151,9 +151,12 @@ def rho_gas(r, M, z, conc_model='diemer19', mass_def='vir'):
     c = concentration.concentration(M, mass_def, z, model=conc_model)
     return theta(r, M, z, conc_model, mass_def)**(1.0 / (Gamma(c) - 1.0))
 
+# in km/s
 def sig2_tot(r, M, z, conc_model='diemer19', mass_def='vir'):
     c = concentration.concentration(M, mass_def, z, model=conc_model)
-    return (1.0 / eta0(c)) * theta(r, M, z, conc_model, mass_def)
+    R = mass_so.M_to_R(M, z, mass_def)
+    rho0_by_P0 = 3*eta0(c)**-1 * R/(G*M)
+    return (1.0 / rho0_by_P0) * theta(r, M, z, conc_model, mass_def)
 # the actual Ptot / rho_gas code will only compute the concentration once, no need to do it all the way down
 
 
@@ -200,7 +203,7 @@ plt.ylim(5e6, 2e6)
 plt.gca().invert_yaxis()
 
 
-# In[151]:
+# In[162]:
 
 
 mass = 10**14.5 #Msun/h
@@ -211,18 +214,22 @@ rads = np.logspace(np.log10(0.01*Rvir),np.log10(Rvir), nr)
 plot(semilogx=True)
 plt.plot(rads/Rvir, (sig2_tot(rads, mass, 0.0, mass_def='vir'))**(1./2.))
 plt.xlabel(r'$r / r_\mathrm{vir}$')
-plt.ylabel(r'Unnormalized $ \sigma_\mathrm{tot}$')
+plt.ylabel(r'$\sigma_\mathrm{tot}$ [km/s]')
+
+print(sig2_tot(rads[-1], mass, 0.0, mass_def='vir')**(1./2.) / sig2_tot(rads[0], mass, 0.0, mass_def='vir')**(1./2.))
 
 # what happens to Komatsu-Seljak model when you have c < 6.5?
 
+# we now have recovered the result of Fig 4 from Komatsu and Seljak
 
-# In[152]:
+
+# In[153]:
 
 
 mass = 10**14.5 #Msun/h
 Rvir = mass_so.M_to_R(mass, 0.0, 'vir')
 nr = 30
-rads = np.logspace(np.log10(0.01*Rvir),np.log10(Rvir), nr)
+rads = np.logspace(np.log10(0.001*Rvir),np.log10(Rvir), nr)
 
 loglogplot()
 plt.plot(rads/Rvir, rho_gas(rads, mass, 0.0, mass_def='vir'), label=r'Our code')
