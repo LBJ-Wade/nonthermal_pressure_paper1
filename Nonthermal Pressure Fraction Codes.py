@@ -111,13 +111,14 @@ plt.ylabel(r'$t_\mathrm{d}$ [Gyr]')
 # it agrees, so our calculation seems to be correct
 # it disagrees by ~factor of 2~ with Shi and Komatsu, which is explained in their erratum
 # hence, our result is indeed correct
+# need to check later results to see if they actually use beta*t_dyn / 2 or beta*t_dyn for further stuff
 
 
-# In[79]:
+# In[105]:
 
 
 # Komatsu and Seljak Model
-# Here, c_nfw is defined using the virialization condition of  Lacey & Cole (1993) and Nakamura & Suto (1997)
+# Here, c_nfw is defined using the virialization condition of Lacey & Cole (1993) and Nakamura & Suto (1997)
 # should make sure that it is pretty similar to Bryan and Norman
 
 def Gamma(c_nfw):
@@ -136,10 +137,16 @@ def NFWPhi(r, M, z, conc_model='diemer19', mass_def='vir'):
     else:
         return -1. * (G * M / R) * (c / NFWf(c)) * (np.log(1. + c*r/R) / (c*r/R))
 
+# there is an issue with the units that I need to figure out, currently theta is incorrect because
+# Phi has units, but rho0_by_P0 does not have units
 def theta(r, M, z, conc_model='diemer19', mass_def='vir'):
     c = concentration.concentration(M, mass_def, z, model=conc_model)
     return 1. + ((Gamma(c) - 1.) / Gamma(c))*rho0_by_P0(c)*(NFWPhi(0, M, z, conc_model='diemer19', mass_def='vir')-NFWPhi(r, M, z, conc_model='diemer19', mass_def='vir'))
-# this definition isn't going to work, because Phi at r=0 is infinite for NFW...
+
+# arbitrary units for now while we figure out what to do with the normalization
+def rho_gas(r, M, z, conc_model='diemer19', mass_def='vir'):
+    c = concentration.concentration(M, mass_def, z, model=conc_model)
+    return theta(r, M, z, conc_model, mass_def)**(1.0 / (Gamma(c) - 1.0))
 
 def sig2_tot(r, M, z, conc_model='diemer19', mass_def='vir'):
     c = concentration.concentration(M, mass_def, z, model=conc_model)
@@ -147,7 +154,50 @@ def sig2_tot(r, M, z, conc_model='diemer19', mass_def='vir'):
 # the actual Ptot / rho_gas code will only compute the concentration once, no need to do it all the way down
 
 
-# In[83]:
+# In[110]:
+
+
+# let's see how theta behaves
+mass = 10**14.5 #Msun/h
+Rvir = mass_so.M_to_R(mass, 0.0, 'vir')
+nr = 30
+rads = np.logspace(np.log10(0.01*Rvir),np.log10(Rvir), nr)
+
+loglogplot()
+plt.plot(rads/Rvir, -theta(rads, mass, 0.0, mass_def='vir'))
+plt.xlabel(r'$r / r_\mathrm{vir}$')
+plt.ylabel(r'$\theta$')
+
+
+# In[99]:
+
+
+concs = np.linspace(4,15,10)
+plot()
+plt.plot(concs, rho0_by_P0(concs))
+plt.xlabel(r'$c_\mathrm{vir}$'); plt.ylabel(r'$\eta(0)$ from Komatsu + Seljak')
+plot()
+plt.plot(concs, ((Gamma(concs) - 1.) / Gamma(concs)))
+plt.xlabel(r'$c_\mathrm{vir}$'); plt.ylabel(r'$\frac{\Gamma}{\Gamma - 1}$')
+
+
+# In[95]:
+
+
+mass = 10**14.5 #Msun/h
+Rvir = mass_so.M_to_R(mass, 0.0, 'vir')
+nr = 30
+rads = np.logspace(np.log10(0.01*Rvir),np.log10(Rvir), nr)
+
+loglogplot()
+plt.plot(rads/Rvir, -1.*NFWPhi(rads, mass, 0.0, mass_def='vir'))
+plt.xlabel(r'$r / r_\mathrm{vir}$')
+plt.ylabel(r'$-\Phi(r)$')
+plt.ylim(5e6, 2e6)
+plt.gca().invert_yaxis()
+
+
+# In[101]:
 
 
 mass = 10**14.5 #Msun/h
@@ -162,6 +212,20 @@ plt.xlabel(r'$r / r_\mathrm{vir}$')
 
 # how do you use the Komatsu-Seljak model when you have c < 6.5?
 # facing an issue currently because Phi->inf when r=0
+
+
+# In[107]:
+
+
+mass = 10**14.5 #Msun/h
+Rvir = mass_so.M_to_R(mass, 0.0, 'vir')
+nr = 30
+rads = np.logspace(np.log10(0.01*Rvir),np.log10(Rvir), nr)
+
+loglogplot()
+plt.plot(rads/Rvir, rho_gas(rads, mass, 0.0, mass_def='vir'), label=r'Our code')
+plt.legend()
+plt.xlabel(r'$r / r_\mathrm{vir}$')
 
 
 # In[ ]:
