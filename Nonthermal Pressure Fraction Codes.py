@@ -114,19 +114,19 @@ plt.ylabel(r'$t_\mathrm{d}$ [Gyr]')
 # need to check later results to see if they actually use beta*t_dyn / 2 or beta*t_dyn for further stuff
 
 
-# In[105]:
+# In[144]:
 
 
 # Komatsu and Seljak Model
 # Here, c_nfw is defined using the virialization condition of Lacey & Cole (1993) and Nakamura & Suto (1997)
 # should make sure that it is pretty similar to Bryan and Norman
 
+# once we verify all results, we can speed this up by removing redundant calculations
+
 def Gamma(c_nfw):
     return 1.15 + 0.01*(c_nfw - 6.5)
 
-# need to make sure this is the same as eta(0) from Komatsu and Seljak
-# not sure how it can be though, because it is lacking units...
-def rho0_by_P0(c_nfw):
+def eta0(c_nfw):
     return 0.00676*(c_nfw - 6.5)**2 + 0.206*(c_nfw - 6.5) + 2.48
 
 def NFWPhi(r, M, z, conc_model='diemer19', mass_def='vir'):
@@ -137,11 +137,14 @@ def NFWPhi(r, M, z, conc_model='diemer19', mass_def='vir'):
     else:
         return -1. * (G * M / R) * (c / NFWf(c)) * (np.log(1. + c*r/R) / (c*r/R))
 
-# there is an issue with the units that I need to figure out, currently theta is incorrect because
-# Phi has units, but rho0_by_P0 does not have units
+# this now agrees with Komatsu and Seljak eqn 19 for theta
+# the confusion was that rho0 / P0 is 3*eta0^-1 and then units removed by scaling by R/GM
 def theta(r, M, z, conc_model='diemer19', mass_def='vir'):
     c = concentration.concentration(M, mass_def, z, model=conc_model)
-    return 1. + ((Gamma(c) - 1.) / Gamma(c))*rho0_by_P0(c)*(NFWPhi(0, M, z, conc_model='diemer19', mass_def='vir')-NFWPhi(r, M, z, conc_model='diemer19', mass_def='vir'))
+    R = mass_so.M_to_R(M, z, mass_def)
+    # the rho0/P0 is actually 3eta^-1(0) * R/(GM) from Komatsu and Seljak
+    rho0_by_P0 = 3*eta0(c)**-1 * R/(G*M)
+    return 1. + ((Gamma(c) - 1.) / Gamma(c))*rho0_by_P0*(NFWPhi(0, M, z, conc_model='diemer19', mass_def='vir')-NFWPhi(r, M, z, conc_model='diemer19', mass_def='vir'))
 
 # arbitrary units for now while we figure out what to do with the normalization
 def rho_gas(r, M, z, conc_model='diemer19', mass_def='vir'):
@@ -150,11 +153,11 @@ def rho_gas(r, M, z, conc_model='diemer19', mass_def='vir'):
 
 def sig2_tot(r, M, z, conc_model='diemer19', mass_def='vir'):
     c = concentration.concentration(M, mass_def, z, model=conc_model)
-    return (1.0 / rho0_by_P0(c)) * theta(r, M, z, conc_model, mass_def)
+    return (1.0 / eta0(c)) * theta(r, M, z, conc_model, mass_def)
 # the actual Ptot / rho_gas code will only compute the concentration once, no need to do it all the way down
 
 
-# In[110]:
+# In[146]:
 
 
 # let's see how theta behaves
@@ -164,24 +167,24 @@ nr = 30
 rads = np.logspace(np.log10(0.01*Rvir),np.log10(Rvir), nr)
 
 loglogplot()
-plt.plot(rads/Rvir, -theta(rads, mass, 0.0, mass_def='vir'))
+plt.plot(rads/Rvir, theta(rads, mass, 0.0, mass_def='vir'))
 plt.xlabel(r'$r / r_\mathrm{vir}$')
 plt.ylabel(r'$\theta$')
 
 
-# In[99]:
+# In[147]:
 
 
 concs = np.linspace(4,15,10)
 plot()
-plt.plot(concs, rho0_by_P0(concs))
+plt.plot(concs, eta0(concs))
 plt.xlabel(r'$c_\mathrm{vir}$'); plt.ylabel(r'$\eta(0)$ from Komatsu + Seljak')
 plot()
 plt.plot(concs, ((Gamma(concs) - 1.) / Gamma(concs)))
 plt.xlabel(r'$c_\mathrm{vir}$'); plt.ylabel(r'$\frac{\Gamma}{\Gamma - 1}$')
 
 
-# In[95]:
+# In[150]:
 
 
 mass = 10**14.5 #Msun/h
@@ -197,7 +200,7 @@ plt.ylim(5e6, 2e6)
 plt.gca().invert_yaxis()
 
 
-# In[101]:
+# In[151]:
 
 
 mass = 10**14.5 #Msun/h
@@ -206,15 +209,14 @@ nr = 30
 rads = np.logspace(np.log10(0.01*Rvir),np.log10(Rvir), nr)
 
 plot(semilogx=True)
-plt.plot(rads/Rvir, (-1.*sig2_tot(rads, mass, 0.0, mass_def='vir'))**(1./2.), label=r'Our code')
-plt.legend()
+plt.plot(rads/Rvir, (sig2_tot(rads, mass, 0.0, mass_def='vir'))**(1./2.))
 plt.xlabel(r'$r / r_\mathrm{vir}$')
+plt.ylabel(r'Unnormalized $ \sigma_\mathrm{tot}$')
 
-# how do you use the Komatsu-Seljak model when you have c < 6.5?
-# facing an issue currently because Phi->inf when r=0
+# what happens to Komatsu-Seljak model when you have c < 6.5?
 
 
-# In[107]:
+# In[152]:
 
 
 mass = 10**14.5 #Msun/h
@@ -226,6 +228,8 @@ loglogplot()
 plt.plot(rads/Rvir, rho_gas(rads, mass, 0.0, mass_def='vir'), label=r'Our code')
 plt.legend()
 plt.xlabel(r'$r / r_\mathrm{vir}$')
+
+# now this is starting to look pretty good
 
 
 # In[ ]:
