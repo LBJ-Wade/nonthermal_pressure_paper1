@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # coding: utf-8
 
-# In[262]:
+# In[1]:
 
 
 import numpy as np
@@ -14,17 +14,21 @@ from scipy.interpolate import InterpolatedUnivariateSpline as interp
 from astropy.cosmology import FlatLambdaCDM, z_at_value
 import astropy.units as u
 import subprocess
+from os import getcwd
+import warnings
 get_ipython().run_line_magic('matplotlib', 'inline')
 
 
-# In[5]:
+# In[2]:
 
 
 # will need to test sensitivity to:
 # 1. c(M,z) relationship: Zhao+09, Duffy+08, Diemer+19
+# 2. MAH model: Zhao+09, vdB+14, Parkinson+08 merger trees
+# 3. Various cosmologies
 
 
-# In[181]:
+# In[3]:
 
 
 # global variables
@@ -44,7 +48,7 @@ cosmo_astro = FlatLambdaCDM(H0=cosmology.getCurrent().H0 * u.km / u.s / u.Mpc, T
 print(cosmology.getCurrent())
 
 
-# In[182]:
+# In[5]:
 
 
 # mass-concentration relationships
@@ -71,7 +75,7 @@ plt.ylabel(r'$c$')
 # We probably want to use one of the all-cosmology c(M,z) since we will use different definitions of the virial radius
 
 
-# In[8]:
+# In[6]:
 
 
 # computing t_d from t_dyn
@@ -88,14 +92,13 @@ def NFWM(r, M, z, conc_model='diemer19', mass_def='vir'):
     R = mass_so.M_to_R(M, z, mass_def)
     return M * NFWf(c*r/R) / NFWf(c)
 
-# need to fix unit conversions here...
 def t_d(r, M, z, conc_model='diemer19', mass_def='vir', beta=beta_def):
     Menc = NFWM(r, M, z, conc_model, mass_def)
     t_dyn = 2. * np.pi * (r**3 / (G*Menc))**(1./2.) * km_per_kpc / (cosmology.getCurrent().H0 / 100.)
-    return beta * t_dyn
+    return beta * t_dyn / s_per_Gyr / 2.
 
 
-# In[9]:
+# In[7]:
 
 
 # look at t_d vs. r for a 10^14 Msun/h halo to verify the results
@@ -109,8 +112,8 @@ dt = mass_so.dynamicalTime(0.0, 'vir', definition='orbit')
 print(dt / 2)
 
 loglogplot()
-plt.plot(rads/Rvir, t_d(rads, mass, 0.0, mass_def='vir')/s_per_Gyr, label=r'Our code')
-plt.plot([1.], [dt], '*', label=r'Colossus Orbit $t_\mathrm{dyn}$')
+plt.plot(rads/Rvir, t_d(rads, mass, 0.0, mass_def='vir'), label=r'Our code')
+plt.plot([1.], [dt/2], '*', label=r'Colossus Orbit $t_\mathrm{dyn}$')
 plt.legend()
 plt.xlabel(r'$r / r_\mathrm{vir}$')
 plt.ylabel(r'$t_\mathrm{d}$ [Gyr]')
@@ -120,7 +123,7 @@ plt.ylabel(r'$t_\mathrm{d}$ [Gyr]')
 # need to check later results to see if they actually use beta*t_dyn / 2 or beta*t_dyn for further stuff
 
 
-# In[10]:
+# In[8]:
 
 
 # Komatsu and Seljak Model
@@ -177,7 +180,7 @@ def sig2_tot(r, M, z, conc_model='diemer19', mass_def='vir'):
 # radius also increases with time (hence why c increases)
 
 
-# In[11]:
+# In[9]:
 
 
 concs = np.linspace(4,15,10)
@@ -189,7 +192,7 @@ plt.plot(concs, ((Gamma(concs) - 1.) / Gamma(concs)))
 plt.xlabel(r'$c_\mathrm{vir}$'); plt.ylabel(r'$\frac{\Gamma}{\Gamma - 1}$')
 
 
-# In[12]:
+# In[10]:
 
 
 mass = 10**14.5 #Msun/h
@@ -207,195 +210,88 @@ plt.ylabel(r'$\sigma_\mathrm{tot}$ [km/s]')
 # we now have recovered the result of Fig 4 from Komatsu and Seljak
 
 
-# In[255]:
+# In[11]:
 
 
-print(cosmo)
+zhao_exec_name = 'mandc.x'
+vdb_exec_name = 'getPWGH'
 
+# TODO: Update the calls to use names that change with the cosmology
+# then we can check for the presence of a file for a given combo of m, z, and cosmo
+# and if it is there already, we don't need to regenerate it
+# this will speed up the reproduction of plots
 
-# In[270]:
-
-
-# function that returns an average MAH given the input cosmology, mass, and z_obs
-
-exec_name = 'mandc.x'
-
-def zhao_mah(mass, z_obs, cosmo):
-    instring = 'nthpre\n%.3f %.3f\n1\n%.3f\n%.3f\n%.3f\n%.4f %1.3f\n1\n%1.1f\n%2.1f' % (cosmo.Om0, cosmo.Ode0, cosmo.H0/100., cosmo.sigma8, cosmo.ns, cosmo.Ob0, cosmo.Tcmb0, z_obs, np.log10(mass))
-    command = 'ls -l' #'./%s < %s' % (exec_name, instring)
+# can convert to 200c, 200m if needed
+def zhao_mah(Mobs, z_obs, cosmo):
+    lgMobs = np.log10(Mobs)
+    instring = 'nthpre\n%.3f %.3f\n1\n%.3f\n%.3f\n%.3f\n%.4f %1.3f\n1\n%1.1f\n%2.1f' % (cosmo.Om0, cosmo.Ode0, cosmo.H0/100., cosmo.sigma8, cosmo.ns, cosmo.Ob0, cosmo.Tcmb0, z_obs, lgMobs)
+    command = "echo '%s' | %s/%s" % (instring, getcwd(), zhao_exec_name)
     process = subprocess.Popen(command, shell=True, stdout=subprocess.PIPE)
     process.wait()
-    print(process.returncode)
-zhao_mah(10**15, 0.0, cosmo)    
+    # load in data file
+    zpt = '%05d' % (np.round(z_obs, decimals=1)*100)
+    mpt = '%05d' % (np.round(lgMobs, decimals=1)*100)
+    df_name = 'mchistory_nthpre.%s.%s' % (zpt, mpt)
+    data = np.loadtxt(df_name,skiprows=1)
+    # will update the line below if we want to use 200c/200m
+    zeds = data[:,0]; mass = data[:,1]; conc = data[:,2]
+    times = data[:,-1] / yr_per_Gyr / (cosmo.H0/100.);
+    # wonder how sensitive the results are to the derivative method used
+    dMdt = (mass[1:] - mass[:-1]) / (times[1:] - times[:-1])
+    # setting the dMdt at present day to zero since we don't need to evolve past z=0
+    dMdt = np.insert(dMdt, len(dMdt), 0)
+    out = np.column_stack((zeds, mass, conc, dMdt))
+    out = np.flip(out, axis=0)
+    return(out)
+
+# same units for both, dM/dt in Msun/h / Gyr, mass in Msun/h
+
+def vdb_mah(Mobs, z_obs, cosmo, tp='average'):
+    if(tp=='median'):
+        med_or_avg = 0
+    elif(tp=='average'):
+        med_or_avg = 1
+    instring = '%.3f\n%.3f\n%.3f\n%.3f\n%.4f\n%1.1E\n%1.1f\n%1d' % (cosmo.Om0, cosmo.H0/100., cosmo.sigma8, cosmo.ns, cosmo.Ob0*(cosmo.H0/100.)**2, Mobs, z_obs, med_or_avg)
+    command = "echo '%s' | %s/%s" % (instring, getcwd(), vdb_exec_name)
+    process = subprocess.Popen(command, shell=True, stdout=subprocess.PIPE)
+    process.wait()
+    # load in data file
+    df_name = 'PWGH_%s.dat' % tp
+    data = np.loadtxt(df_name)
+    zeds = data[:,1]; mass = 10**data[:,3] * Mobs
+    conc = data[:,6]; dMdt = data[:,7] * yr_per_Gyr
+    out = np.column_stack((zeds, mass, conc, dMdt))
+    out = np.flip(out, axis=0)
+    return(out)
+
+# will want to do the same thing here with the Parkinson model, but give it a third dimension which corresponds to
+# the number of trees
 
 
-# In[ ]:
+# In[12]:
 
 
-# assuming that 
-
-
-# In[ ]:
-
-
-# up next: compute dsigma_tot^2 / dt using Shi+14 eqn 19
-# then: compute t_growth, sigma_nth (figure out how to deal with changing radial bins)
-# then: MAH
-# then: solve for evolution of sigma_nth
-
-
-# In[ ]:
-
-
-# want to reproduce Shi/Komatsu Figs 2,3,4 (and then something similar to 1 from vdB+14)
-# we've so far got z=0 case for Fig 2 and top pane of 4, need to figure out t_growth and then sigma_nth
-
-
-# In[ ]:
-
-
-# general pipeline will look like the following:
-# for cosm in cosmologies:
-#      for mass in halo_masses:
-#                # set initial conditions
-#           for t in times:
-#                get the t_d values for each radius and evolve all radii forward one timestep
-
-
-# In[24]:
-
-
-# loading Zhao+09 sample mass trajectory to see if we can reproduce Fig 1
-zhao_dat = np.loadtxt('sample_mah_1e15',skiprows=1)
-vdb_dat  = np.loadtxt('sample_mah_1e15_vdb')
-
-M0 = 1e15
+zd = zhao_mah(10**15, 0.0, cosmo)
+vd = vdb_mah(10**15, 0.0, cosmo)
 
 loglogplot()
-plt.plot(1+zhao_dat[:,0],zhao_dat[:,1])
-plt.plot(1+vdb_dat[:,1],10**vdb_dat[:,3]*M0)
+plt.plot(1+zd[:,0],zd[:,1], label='Zhao+09')
+plt.plot(1+vd[:,0],vd[:,1], label='vdB+14')
 plt.xlim(1,10)
 plt.ylim(10**11,10**15)
-loglogplot()
-plt.plot(zhao_dat[:,-1] / (cosmology.getCurrent().H0 / 100.) / 10**9,zhao_dat[:,1])
-plt.plot(zhao_dat[0,-1] / (cosmology.getCurrent().H0 / 100.) / 10**9 - vdb_dat[:,2],10**vdb_dat[:,3]*M0)
-plt.xlim(0.5,15.)
-plt.ylim(10**11,10**15)
-
-# this looks bang-on, so let's see how similar it looks to vdB median MAH
-# vdB final columns gives c and dM/dt (column 7 and 8 starting at 1)
+plt.xlabel(r'$1+z$')
+plt.ylabel(r'$M$')
 
 
-# In[220]:
+# In[15]:
 
 
-# now that we have a sample MAH vs. time, we want to write a code that takes an interpolated MAH
-# which can just be a univariate interpolator M(t), which we can take derivate of to get dM/dt
-# or if we use vdB, we can simply interpolate the result
+vdb_dat = vdb_mah(10**15, 0.0, cosmo)
 
-# goal is to exactly reproduce the Fig 4 lower panel for the 1e15 halo at z=0 before we move on to use vdB and then
-# to write the integrator
-
-# then, using this, we compute dsigma^2/dt
-
-# we'll do everything using time
-cosmo.age(1.5) # Gyr
-
-# compute dsigma^2/dt at z=0 using current dM/dt, can use vdB's
-t0 = cosmo.age(0)
-delta_t = 0.01
-print(cosmo.age(t0+delta_t, inverse=True))
-# need the new redshift at this updated time...
-
-# take the two redshifts, dt is in Gyr, so need to convert dMdt to per Gyr
-# once we're happy with this, can just give it fixed dt/dz/dM
-def dsig2_dt(r, z1, z2, dt, M, dM, dMdt, conc_model='diemer19', mass_def='vir'):
-    part_t = (sig2_tot(r, M, z2, conc_model, mass_def) - sig2_tot(r, M, z1, conc_model, mass_def)) / dt
-    part_M = (sig2_tot(r, M+dM, z1, conc_model, mass_def) - sig2_tot(r, M, z1, conc_model, mass_def)) / dM
-    return part_t + part_M * dMdt
-
-def sig2_diff(r, z1, z2, dt, M, dM, dMdt, conc_model='diemer19', mass_def='vir'):
-    return sig2_tot(r, M+dM, z1, conc_model, mass_def) - sig2_tot(r, M, z1, conc_model, mass_def)
-
-def sig2_diff_t(r, z1, z2, dt, M, dM, dMdt, conc_model='diemer19', mass_def='vir'):
-    return sig2_tot(r, M, z2, conc_model, mass_def) - sig2_tot(r, M, z1, conc_model, mass_def)
-
-
-# In[219]:
-
-
-# compute at the present day
-mass = 10**15 #Msun/h
-Rvir = mass_so.M_to_R(mass, 0.0, 'vir')
-nr = 30
-rads = np.logspace(np.log10(0.01*Rvir),np.log10(Rvir), nr)
-
-z1 = 0.001
-t1 = cosmo.age(z1)
-print(t1)
-dt = 0.02 # Gyr
-z2 = cosmo.age(t1+dt, inverse=True)
-dM = 10**5 # let's see if sensitive to this...
-print(z2, z1)
-
-# z=0 dM/dt from vdB data
-dMdt = vdb_dat[0,-1] * yr_per_Gyr
-
-ds2dt = dsig2_dt(rads, z1, z2, dt, mass, dM, dMdt)
-s2diff = sig2_diff(rads, z1, z2, dt, mass, dM, dMdt)
-s2difft = sig2_diff_t(rads, z1, z2, dt, mass, dM, dMdt)
-
-plot(semilogx=True)
-plt.plot(rads/Rvir, ds2dt)
-plt.xlabel(r'$r / r_\mathrm{vir}$')
-plt.ylabel(r'$\mathrm{d}\sigma_\mathrm{tot}^2 /\mathrm{d}t$ [(km/s)$^2$/Gyr]')
-
-plot(semilogx=True)
-plt.plot(rads/Rvir, s2diff / dM)
-plt.xlabel(r'$r / r_\mathrm{vir}$')
-
-plot(semilogx=True)
-plt.plot(rads/Rvir, s2difft / dt)
-plt.xlabel(r'$r / r_\mathrm{vir}$')
-
-# need to figure out how to deal with the negatives...
-
-tgrowth = sig2_tot(rads, mass, z1, mass_def='vir') / np.abs(ds2dt)
-loglogplot()
-plt.plot(rads/Rvir, tgrowth)
-plt.xlabel(r'$r / r_\mathrm{vir}$')
-
-# this looks very similar to the Shi+2014 paper, but seems to be sensitive to the concentration model
-# one last thing to try: see how things change if we use the concentrations from the Zhao+09 model
-# however, it explicitly says that they use the Duffy model, so that should look the same
-
-# should be getting around ~17 Gyr for 10^15 Msun, so let's see if we can figure out the cause of this
-
-
-# In[ ]:
-
-
-# framework for integrating one halo forward to get sig_nth^2 at z=0
-# set t_0 = cosmo.age(z_i) where z_i = 6
-# set t_f = cosmo.age(z_0) where z_0 = 0
-# set n_steps, then tvals = np.linspace(t_0, t_f, n_steps+1) # see if logspace works better...
-# set zvals = cosmo.age(tvals)
-# delta_t = tvals[1:] - tvals[:-1]
-# for i in range(0, n_steps):
-#     compute dsigma2_dt
-
-z_i = 
-
-t_0 = cosmo.age(z_i)
-
-
-# In[171]:
-
-
-masses = 10**vdb_dat[:,3] * mass
-zeds = vdb_dat[:,1]
+masses = vdb_dat[:,1]
+zeds = vdb_dat[:,0]
 msk = zeds <= 6
-vdb_concs = vdb_dat[:,6]
+vdb_concs = vdb_dat[:,2]
 concs = np.zeros(len(vdb_dat))
 for i in range(0,len(concs)):
     concs[i] = concentration.concentration(masses[i], 'vir', zeds[i], model = 'diemer19')
@@ -406,195 +302,25 @@ plt.plot(masses[msk], vdb_concs[msk], label='vdB')
 plt.legend()
 
 
-# In[93]:
+# In[16]:
 
 
-# can try interpolating dM/dt
-# then, if we know the amount of mass gained vs. time, we can update time and update mass together
-# this result SHOULD agree with the previous method, so I need to figure that out still
+warnings.simplefilter('ignore')
+cosmo = cosmology.setCosmology('WMAP5')
+# pipeline takes in Mobs, z, cosmology
+# computes the dsigma^2/dt for each radius
 
-# interpolated in redshift?
-dmdt_interp = interp(vdb_dat[:,1], vdb_dat[:,-1], k=3)
-zeds = np.linspace(0.,10., 1000)
-loglogplot()
-plt.plot(1+zeds, dmdt_interp(zeds), '.-') # this seems to behave oddly...
-plt.plot(1+vdb_dat[:,1], vdb_dat[:,-1], '.-')
+Mobs = 10**15
+zobs = 0.0
+mass_def = 'vir'
+conc_model='duffy08' # will definitely want to try changing this
+nrads = 30
 
+# need to make sure that when we change the cosmology, all things are properly updated
 
-# In[165]:
-
-
-# now, we can try to compute the actual total change in sigma^2 and see if that works
-mass = 10**15 #Msun/h
-Rvir = mass_so.M_to_R(mass, 0.0, 'vir')
-nr = 30
-rads = np.logspace(np.log10(0.01*Rvir),np.log10(Rvir), nr)
-
-z1 = 0.0001
-t1 = cosmo.age(z1)
-print(t1)
-dt = -0.05 # Gyr
-z2 = cosmo.age(t1+dt, inverse=True)
-
-dmdt_interp = interp(vdb_dat[:,1], vdb_dat[:,-1] * yr_per_Gyr, k=3)
-
-print(np.log10(-1.*dmdt_interp(z1)*dt)) # change by 10^8 msun...
-
-sig2_1 = sig2_tot(rads, mass, z1, conc_model='diemer19', mass_def='vir')
-sig2_2 = sig2_tot(rads, mass + dmdt_interp(z1)*dt, z2, conc_model='diemer19', mass_def='vir')
-dsig2_dt = (sig2_1 - sig2_2) / dt
-
-plot(semilogx=True)
-plt.plot(rads/Rvir, dsig2_dt)
-plt.xlabel(r'$r / r_\mathrm{vir}$')
-plt.ylabel(r'$\mathrm{d}\sigma_\mathrm{tot}^2 /\mathrm{d}t$ [(km/s)$^2$/Gyr]')
-
-
-# In[106]:
-
-
-# so for both approaches, we have the issue that it is sensitive to the dt... need to figure that out
-# should be able to plot, at fixed r, and then change time to see what is going on...
-# let's hold r and mass constant and then change redshift linearly in t, then plot sig^2 vs t
-# can do similarly at fixed z and then vary the mass alone
-
-#varying time
-mass = 1E15 # Msun/h
-Rvir = mass_so.M_to_R(mass, 0.0, 'vir')
-# let's look at 0.1 Rvir for an example
-rad = 0.1 * Rvir
-
-z1 = -0.005 #0.0001
-t1 = cosmo.age(z1)
-z2 = 0.0001 #1.5
-t2 = cosmo.age(z2)
-
-# the function seems well-behaved...
-
-nt = 100
-tvals = np.linspace(t2, t1, nt)
-sig2_vals = np.zeros(nt)
-for i in range(0,nt):
-    sig2_vals[i] = sig2_tot(rad, mass, cosmo.age(tvals[i], inverse=True), conc_model='diemer19', mass_def='vir')
-    
-loglogplot()
-plt.plot(tvals, sig2_vals) # as time goes on, it clearly decreases
-
-# this is well-behaved, interestingly, so we need to figure out why my estimations of partial sig2 partial t is sensitive
-# to partial t
-
-# it seems that the difference between sig^2 approaches a constant as I decrease delta_t, so the derivative goes up
-# by the corresponding factor associated with delta_t^-1, so this needs to be figured out
-
-
-# In[188]:
-
-
-mass = 10**15 #Msun/h
-Rvir = mass_so.M_to_R(mass, 0.0, 'vir')
-nr = 30
-rads = np.logspace(np.log10(0.01*Rvir),np.log10(Rvir), nr)
-
-z1 = 0.0001
-t1 = cosmo.age(z1)
-print(t1)
-dt = 0.1 # Gyr
-print(t1, t1+dt)
-#z2 = cosmo.age(t1+dt, inverse=True) # this is the reason why... the redshift is not actually updating
-print(z1,z2)
-
-# z=0 dM/dt from vdB data
-dMdt = vdb_dat[0,-1] * yr_per_Gyr
-
-def sig2_diff_t(r, z1, z2, dt, M, conc_model='diemer19', mass_def='vir'):
-    return sig2_tot(r, M, z2, conc_model, mass_def) - sig2_tot(r, M, z1, conc_model, mass_def)
-
-dt1 = 0.02 # we've gone beyond and are only using the interpolation table...
-dt2 = 0.04
-print(z_at_value(cosmo_astro.age, (t1-dt1) * u.Gyr), z_at_value(cosmo_astro.age, (t1-dt2) * u.Gyr))
-s2difft_1 = sig2_diff_t(rads, z1, z_at_value(cosmo_astro.age, (t1-dt1) * u.Gyr), dt1, mass)
-s2difft_2 = sig2_diff_t(rads, z1, z_at_value(cosmo_astro.age, (t1-dt2) * u.Gyr), dt2, mass)
-
-# this seems to work okay
-
-
-plot(semilogx=True)
-plt.plot(rads/Rvir, s2difft_1 / dt1)
-plt.plot(rads/Rvir, s2difft_2 / dt2)
-plt.xlabel(r'$r / r_\mathrm{vir}$')
-
-plot(semilogx=True)
-plt.plot(rads/Rvir, (s2difft_1 / dt1 - s2difft_2 / dt2) / (s2difft_1 / dt1)) # sub percent-level agreement
-
-
-# In[191]:
-
-
-mass = 10**15 #Msun/h
-Rvir = mass_so.M_to_R(mass, 0.0, 'vir')
-nr = 30
-rads = np.logspace(np.log10(0.01*Rvir),np.log10(Rvir), nr)
-
-z1 = 0.0001
-t1 = cosmo.age(z1)
-print(t1)
-dt = 0.1 # Gyr
-print(t1, t1+dt)
-#z2 = cosmo.age(t1+dt, inverse=True) # this is the reason why... the redshift is not actually updating
-print(z1,z2)
-
-# z=0 dM/dt from vdB data
-dMdt = vdb_dat[0,-1] * yr_per_Gyr
-
-def sig2_diff_t(r, z1, z2, dt, M, conc_model='diemer19', mass_def='vir'):
-    return sig2_tot(r, M, z2, conc_model, mass_def) - sig2_tot(r, M, z1, conc_model, mass_def)
-
-dt1 = 0.02 # we've gone beyond and are only using the interpolation table...
-dt2 = 0.04
-
-# so timesteps of 0.05 Gyr should be fine...
-
-z_z1 = cosmo.age(t1+dt1, inverse=True)
-z_z2 = cosmo.age(t1+dt2, inverse=True)
-print(z_z1, z_z2, 'this')
-
-print(z_at_value(cosmo_astro.age, (t1-dt1) * u.Gyr), z_at_value(cosmo_astro.age, (t1-dt2) * u.Gyr))
-s2difft_1 = sig2_diff_t(rads, z1, z_z1, dt1, mass)
-s2difft_2 = sig2_diff_t(rads, z1, z_z2, dt2, mass)
-
-# this seems to work okay
-
-
-plot(semilogx=True)
-plt.plot(rads/Rvir, s2difft_1 / dt1)
-plt.plot(rads/Rvir, s2difft_2 / dt2)
-plt.xlabel(r'$r / r_\mathrm{vir}$')
-
-plot(semilogx=True)
-plt.plot(rads/Rvir, (s2difft_1 / dt1 - s2difft_2 / dt2) / (s2difft_1 / dt1)) # sub percent-level agreement
-# agreement within 1.2% here using the colossus stuff...
-# don't want so much error in the numerical derivatives here before we've even gotten to the actual computation
-
-
-# In[ ]:
-
-
-# now we need convergence in the mass direction, and then we can put it all together
-# also can go back and see if astropy is really necessary
-# don't really need astropy and the mass dM doesn't seem to have a problem either
-
-
-# In[ ]:
-
-
-# let's see how things work when we use the Zhao+09 concentrations instead
-
-
-# In[253]:
-
-
-# looking at just Zhao concentrations from file
-zhao_dat = np.loadtxt('sample_mah_1e14',skiprows=1)
+zhao_dat = zhao_mah(Mobs, zobs, cosmo)
+first_snap_to_use = np.where(zhao_dat[:,0] <= 6.)[0][0] - 1
+zhao_dat = zhao_dat[first_snap_to_use:]
 
 def sig2_tot(r, M, c, R):
     rho0_by_P0 = 3*eta0(c)**-1 * R/(G*M)
@@ -603,61 +329,175 @@ def sig2_tot(r, M, c, R):
     theta = 1. + ((Gamma(c) - 1.) / Gamma(c)) * 3. *eta0(c)**-1 * (phi0 - phir)
     return (1.0 / rho0_by_P0) * theta
 
+n_steps = zhao_dat.shape[0] - 1
 
-# needs to take R_1 and R_2, c_1 and c_2
-def dsig2_dt(r, dt, M, dM, dMdt, c_1, R_1, c_2, R_2):
-    part_t = (sig2_tot(r, M, c_2, R_2) - sig2_tot(r, M, c_1, R_1)) / dt
-    part_M = (sig2_tot(r, M+dM, c_1, R_1) - sig2_tot(r, M, c_1, R_1)) / dM
-    print(part_t, part_M*dMdt)
-    return part_t + part_M * dMdt
+Robs = mass_so.M_to_R(Mobs, zobs, mass_def)
 
-z1 = zhao_dat[1, 0]
-z2 = zhao_dat[0, 0]
-dt = (zhao_dat[0,-1] - zhao_dat[1,-1]) / yr_per_Gyr / 0.7 #roughly h
+rads = np.logspace(np.log10(0.01*Robs),np.log10(Robs), nrads)
 
-mass = zhao_dat[1,1]
-R_1 = zhao_dat[1,4] * 1e3
-R_2 = zhao_dat[0,4] * 1e3
-#Rvir = mass_so.M_to_R(mass, z1, 'vir')
-Rvir = R_1
-nr = 30
-rads = np.logspace(np.log10(0.01*Rvir),np.log10(Rvir), nr)
+ds2dt = np.zeros((n_steps, nrads))
+sig2tots = np.zeros((n_steps, nrads))
+sig2nth = np.zeros((n_steps, nrads))
 
-dM = zhao_dat[0,1] - mass
+for i in range(0, n_steps):
+    z_1 = zhao_dat[i,0] #first redshift
+    z_2 = zhao_dat[i+1,0] #second redshift, the one we are actually at
+    dt = cosmo.age(z_2) - cosmo.age(z_1) # in Gyr
+    mass_1 = zhao_dat[i,1]
+    mass_2 = zhao_dat[i+1,1]
+    dM = mass_2 - mass_1
+    dMdt = zhao_dat[i+1,3] # since the (i+1)th is computed between i+1 and i
+    R_1 = mass_so.M_to_R(mass_1, z_1, mass_def)
+    R_2 = mass_so.M_to_R(mass_2, z_2, mass_def)
+    c_1 = concentration.concentration(mass_1, mass_def, z_1, model = 'duffy08') #zhao_dat[i,2]
+    c_2 = concentration.concentration(mass_2, mass_def, z_2, model = 'duffy08') #zhao_dat[i+1,2]
+    sig2tots[i,:] = sig2_tot(rads, mass_2, c_2, R_2) # second snapshot
+    if(i==0):
+        # update this to accept general eta
+        ds2dt[i,:] = (sig2tots[i,:] - sig2_tot(rads, mass_1, c_1, R_1)) / dt # see if this works better, full change
+        sig2nth[i,:] = eta_def * sig2tots[i,:] # starts at z_i = 6 roughly
+    else:
+        ds2dt[i,:] = (sig2tots[i,:] - sig2tots[i-1,:]) / dt
+        td = t_d(rads, mass_2, z_2, conc_model, mass_def, beta=beta_def) #t_d at z of interest z_2
+        sig2nth[i,:] = sig2nth[i-1] + ((-1. * sig2nth[i-1,:] / td) + eta_def * ds2dt[i,:])*dt
+        # here we can see if it is td or 2td that we are using in comparison
 
-dMdt = dM/dt # it should be in Msun/h / Gyr
 
-c_1 = concentration.concentration(mass, 'vir', z1, model = 'duffy08') #zhao_dat[1,2]
-c_2 = concentration.concentration(mass+dM, 'vir', z2, model = 'duffy08') #zhao_dat[0,2]
-
-
-
-print(c_1, np.log10(dM), np.log10(mass), dt, np.log10(dMdt))
-print(z1)
-
-print(Rvir, R_1, R_2)
-
-ds2dt = dsig2_dt(rads, dt, mass, dM, dMdt, c_1, R_1, c_2, R_2)
 
 plot(semilogx=True)
-plt.plot(rads/Rvir, ds2dt)
+plt.plot(rads/Robs, ds2dt[-1,:])
 plt.xlabel(r'$r / r_\mathrm{vir}$')
 plt.ylabel(r'$\mathrm{d}\sigma_\mathrm{tot}^2 /\mathrm{d}t$ [(km/s)$^2$/Gyr]')
 
-tgrowth = sig2_tot(rads, mass, c_1, R_1) / np.abs(ds2dt)
-loglogplot() #plot(semilogx=True)
-plt.plot(rads/Rvir, tgrowth)
+tgrowth = sig2tots / np.abs(ds2dt)
+loglogplot() 
+plt.plot(rads/Robs, tgrowth[-1,:])
 plt.xlabel(r'$r / r_\mathrm{vir}$')
 plt.ylabel(r'$t_\mathrm{growth}$ [Gyr]')
 plt.ylim(10**1, 3*10**2)
-# this result is now entirely within the realm of reasonable values, although it is a bit more flat than it could be
 
-# conclusion is that the result is pretty sensitive to the concentrations, I think
-# let's see how this changes if we use the duffy concentrations instead
-# then, we can also try the 10^14 at z=0 to see if things still look correct
+td = t_d(rads, zhao_dat[-1,1], zhao_dat[-1,0], conc_model, mass_def, beta=beta_def)
+fnth_lim = eta_def * td / (td + tgrowth[-1,:])
 
-# this seems to reproduce the Fig 3 of Shi+2014 pretty well, but the t_growth grows a bit too slowly in the outer
-# regions for the 10^14 Msun halo; however, it looks bang-on for the 10^15 Msun halo
+plot(semilogx=True)
+plt.plot(rads/Robs, np.sqrt(sig2nth[-1,:]))
+plt.plot(rads/Robs, np.sqrt(fnth_lim) * np.sqrt(sig2tots[-1,:]), color='k')
+plt.xlabel(r'$r / r_\mathrm{vir}$')
+plt.ylabel(r'$\sigma_\mathrm{nth}$ (km/s)')
+plt.ylim(0,1000)
 
-# in conclusion, if we use this method, we can claim that we are very closely able to reproduce the Figs 1-4 of Shi+14
+loglogplot()
+fnth = sig2nth[-1,:] / sig2tots[-1,:]
+print(np.min(fnth),np.max(fnth)) # currently not changing much... still a bug
+plt.plot(rads/Robs, fnth)
+plt.xlabel(r'$r / r_\mathrm{vir}$')
+plt.ylabel(r'$f_\mathrm{nth}$')
+plt.xlim(10**-1, 1.)
+
+plot(semilogx=True)
+plt.plot(rads/Robs, np.sqrt(sig2tots[-1,:])) # this is correct still
+plt.xlabel(r'$r / r_\mathrm{vir}$')
+plt.ylabel(r'$\sigma_\mathrm{tot}$ [km/s]')
+
+# once we can *roughly* reproduce the results of Shi+14, we're ready to start trying different masses, redshifts, cosmos
+warnings.simplefilter('default')
+
+
+# In[ ]:
+
+
+warnings.simplefilter('ignore')
+# let's make a function out of the stuff below and then loop over several masses and redshifts
+# then we can add in cosmologies
+
+def sig2_tot(r, M, c, R):
+    rho0_by_P0 = 3*eta0(c)**-1 * R/(G*M)
+    phi0 = -1. * (c / NFWf(c))
+    phir = -1. * (c / NFWf(c)) * (np.log(1. + c*r/R) / (c*r/R))
+    theta = 1. + ((Gamma(c) - 1.) / Gamma(c)) * 3. *eta0(c)**-1 * (phi0 - phir)
+    return (1.0 / rho0_by_P0) * theta
+
+#takes in Mobs, zobs, cosmo
+#returns f_nth, sig2nth, sig2tot at z=zobs
+def gen_fnth(Mobs, zobs, cosmo, mah_retriever=zhao_mah, mass_def='vir', conc_model='duffy08', beta=beta_def, eta=eta_def):
+    data = mah_retriever(Mobs, zobs, cosmo)
+    first_snap_to_use = np.where(data[:,0] <= 6.)[0][0] - 1
+    data = data[first_snap_to_use:]
+
+    n_steps = data.shape[0] - 1
+
+    Robs = mass_so.M_to_R(Mobs, zobs, mass_def)
+
+    rads = np.logspace(np.log10(0.01*Robs),np.log10(Robs), nrads)
+
+    ds2dt = np.zeros((n_steps, nrads))
+    sig2tots = np.zeros((n_steps, nrads))
+    sig2nth = np.zeros((n_steps, nrads))
+
+    for i in range(0, n_steps):
+        z_1 = data[i,0] #first redshift
+        z_2 = data[i+1,0] #second redshift, the one we are actually at
+        dt = cosmo.age(z_2) - cosmo.age(z_1) # in Gyr
+        mass_1 = data[i,1]
+        mass_2 = data[i+1,1]
+        dM = mass_2 - mass_1
+        dMdt = data[i+1,3] # since the (i+1)th is computed between i+1 and i
+        R_1 = mass_so.M_to_R(mass_1, z_1, mass_def)
+        R_2 = mass_so.M_to_R(mass_2, z_2, mass_def)
+        c_1 = concentration.concentration(mass_1, mass_def, z_1, model=conc_model) #zhao_dat[i,2]
+        c_2 = concentration.concentration(mass_2, mass_def, z_2, model=conc_model) #zhao_dat[i+1,2]
+        sig2tots[i,:] = sig2_tot(rads, mass_2, c_2, R_2) # second snapshot
+        if(i==0):
+            # update this to accept general eta
+            ds2dt[i,:] = (sig2tots[i,:] - sig2_tot(rads, mass_1, c_1, R_1)) / dt # see if this works better, full change
+            sig2nth[i,:] = eta_def * sig2tots[i,:] # starts at z_i = 6 roughly
+        else:
+            ds2dt[i,:] = (sig2tots[i,:] - sig2tots[i-1,:]) / dt
+            td = t_d(rads, mass_2, z_2, conc_model, mass_def, beta=beta_def) #t_d at z of interest z_2
+            sig2nth[i,:] = sig2nth[i-1] + ((-1. * sig2nth[i-1,:] / td) + eta_def * ds2dt[i,:])*dt
+    fnth = sig2nth[-1,:] / sig2tots[-1,:]
+    return fnth, rads, sig2nth[-1,:], sig2tots[-1,:]
+
+
+masses = [10**13, 10**14, 10**15]
+zeds = [0.0, 0.3, 1.0]
+cosmologies = ['EdS','WMAP5','planck18']
+fancy_cosms = ['EdS', 'WMAP5', "Planck '18"]
+
+fig, ax = plt.subplots(nrows=len(masses),ncols=len(zeds),figsize=(13,13), sharex=True, sharey=True, gridspec_kw={'wspace':0.05,'hspace':0.075})
+for i in range(0,3):
+    for j in range(0,3):
+        ax[i,j].yaxis.set_ticks_position('both')
+        ax[i,j].xaxis.set_ticks_position('both')
+        ax[i,j].tick_params(axis='both', which='minor', colors='black', width=1.0, length=2.0)
+        ax[i,j].loglog()
+        ax[i,j].set_ylim(2.5e-4,0.8)
+        ax[i,j].set_xlim(0.8*1e-2,1*1.2)
+        #ax[i,j].xaxis.set_minor_locator(MultipleLocator(0.2))
+        #ax[i,j].yaxis.set_minor_locator(MultipleLocator(0.05))
+
+
+# can generate colors based on the cosmology
+
+for i,m in enumerate(masses):
+    for j,z in enumerate(zeds):
+        for k,cosm in enumerate(cosmologies):
+            print(i,j,k)
+            cosmo = cosmology.setCosmology(cosm)
+            fnth, rads, _, _ = gen_fnth(m, z, cosmo, mah_retriever=vdb_mah, mass_def='vir', conc_model='duffy08', beta=beta_def, eta=eta_def)
+            ax[i,j].plot(rads/rads[-1], fnth, label=fancy_cosms[k])
+
+
+for i in range(0,len(masses)):
+    ax[i,0].set_ylabel(r'$f_\mathrm{nth}$')
+    ax[i,0].text(1.3e-2,3e-1,r'$\log_{10}(M_\mathrm{vir})=%.1f$' % np.log10(masses[i]), fontsize=16)
+for i in range(0,len(zeds)):
+    ax[len(masses)-1,i].set_xlabel(r'$r/r_\mathrm{vir}$')
+    ax[0,i].text(1.3e-2,1.7e-1,r'$z=%.1f$' % zeds[i], fontsize=16)
+
+ax[1,len(zeds)-1].legend(frameon=False,fontsize=16)
+
+# clearly, the different cosmologies look different, but this is sensitive to concentration definition
+# we can see how different things are using different concentration definitions and using vdB vs. Zhao
+warnings.simplefilter('default')
 
