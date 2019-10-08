@@ -1,8 +1,3 @@
-#!/usr/bin/env python
-# coding: utf-8
-
-# In[2]:
-
 
 import numpy as np
 import matplotlib.pyplot as plt
@@ -17,20 +12,12 @@ import subprocess
 from os import getcwd
 from os.path import isfile
 import warnings
-get_ipython().run_line_magic('matplotlib', 'inline')
-
-
-# In[3]:
-
+%matplotlib inline
 
 # will need to test sensitivity to:
 # 1. c(M,z) relationship: Zhao+09, Duffy+08, Diemer+19
 # 2. MAH model: Zhao+09, vdB+14, Parkinson+08 merger trees
 # 3. Various cosmologies
-
-
-# In[4]:
-
 
 # global variables
 # free parameters of Shi+14 model; can be changed later
@@ -78,10 +65,6 @@ cosmology.addCosmology('pl18_hiH0', fiducial_params)
 
 print(cosmology.getCurrent())
 
-
-# In[5]:
-
-
 # cosmologies to test the effect of varying S8 instead...
 # S_8 = sigma_8 * sqrt(Omega_m / 0.3)
 
@@ -120,10 +103,6 @@ cosmo_dict = {'near_EdS': 'eeddss', 'WMAP5': 'WMAP05', 'planck18': 'plnk18',
 
 cosmo = cosmology.setCosmology('WMAP5')
 
-
-# In[7]:
-
-
 # mass-concentration relationships
 # Original Shi paper used duffy08 and vdB+14 used the c(M,z) of Zhao+09
 # need to make sure that we use consistent definitions of virial radius, thus concentration, everywhere
@@ -147,10 +126,6 @@ plt.ylabel(r'$c$')
 # NOTE: vdB+14 paper and code use slightly different formulas
 # We probably want to use one of the all-cosmology c(M,z) since we will use different definitions of the virial radius
 
-
-# In[8]:
-
-
 # computing t_d from t_dyn
 # the masses are in Msun/h
 # the lengths for haloes are in kpc/h
@@ -166,10 +141,6 @@ def t_d(r, M, z, c, R, beta=beta_def):
     Menc = NFWM(r, M, z, c, R)
     t_dyn = 2. * np.pi * (r**3 / (G*Menc))**(1./2.) * km_per_kpc / (cosmology.getCurrent().H0 / 100.)
     return beta * t_dyn / s_per_Gyr / 2.
-
-
-# In[9]:
-
 
 # look at t_d vs. r for a 10^14 Msun/h halo to verify the results
 
@@ -191,10 +162,6 @@ plt.ylabel(r'$t_\mathrm{d}$ [Gyr]')
 # it disagrees by ~factor of 2~ with Shi and Komatsu, which is explained in their erratum
 # hence, our result is indeed correct
 # need to check later results to see if they actually use beta*t_dyn / 2 or beta*t_dyn for further stuff
-
-
-# In[10]:
-
 
 # Komatsu and Seljak Model
 # Here, c_nfw is defined using the virialization condition of Lacey & Cole (1993) and Nakamura & Suto (1997)
@@ -249,10 +216,6 @@ def sig2_tot(r, M, z, conc_model='diemer19', mass_def='vir'):
 # concentration increases with time
 # radius also increases with time (hence why c increases)
 
-
-# In[11]:
-
-
 concs = np.linspace(4,15,10)
 plot()
 plt.plot(concs, eta0(concs))
@@ -260,10 +223,6 @@ plt.xlabel(r'$c_\mathrm{vir}$'); plt.ylabel(r'$\eta(0)$ from Komatsu + Seljak')
 plot()
 plt.plot(concs, ((Gamma(concs) - 1.) / Gamma(concs)))
 plt.xlabel(r'$c_\mathrm{vir}$'); plt.ylabel(r'$\frac{\Gamma}{\Gamma - 1}$')
-
-
-# In[12]:
-
 
 mass = 10**14.5 #Msun/h
 Rvir = mass_so.M_to_R(mass, 0.0, 'vir')
@@ -278,10 +237,6 @@ plt.ylabel(r'$\sigma_\mathrm{tot}$ [km/s]')
 # what happens to Komatsu-Seljak model when you have c < 6.5?
 
 # we now have recovered the result of Fig 4 from Komatsu and Seljak
-
-
-# In[13]:
-
 
 zhao_exec_name = 'mandc.x'
 vdb_exec_name = 'getPWGH'
@@ -346,9 +301,6 @@ def vdb_mah(Mobs, z_obs, cosmo, tp='average'):
 # the number of trees
 
 
-# In[14]:
-
-
 cosmo = cosmology.setCosmology('WMAP5')
 zd = zhao_mah(10**15, 0.0, cosmo)
 vd = vdb_mah(10**15, 0.0, cosmo)
@@ -360,10 +312,6 @@ plt.xlim(1,10)
 plt.ylim(10**11,10**15)
 plt.xlabel(r'$1+z$')
 plt.ylabel(r'$M$')
-
-
-# In[15]:
-
 
 loglogplot()
 cosmo = cosmology.setCosmology('near_EdS')
@@ -380,10 +328,6 @@ plt.ylabel(r'$M$')
 plt.legend()
 # Frank's code does not work for EdS
 
-
-# In[16]:
-
-
 vdb_dat = vdb_mah(10**15, 0.0, cosmo)
 
 masses = vdb_dat[:,1]
@@ -398,10 +342,6 @@ plot(semilogx=True)
 plt.plot(masses[msk], concs[msk], label='Diemer+19 Mean')
 plt.plot(masses[msk], vdb_concs[msk], label='vdB/Zhao+19 Mean')
 plt.legend()
-
-
-# In[17]:
-
 
 warnings.simplefilter('ignore')
 cosmo = cosmology.setCosmology('WMAP5')
@@ -500,10 +440,6 @@ plt.ylabel(r'$\sigma_\mathrm{tot}$ [km/s]')
 
 # once we can *roughly* reproduce the results of Shi+14, we're ready to start trying different masses, redshifts, cosmos
 warnings.simplefilter('default')
-
-
-# In[18]:
-
 
 warnings.simplefilter('ignore')
 # let's make a function out of the stuff below and then loop over several masses and redshifts
@@ -616,10 +552,6 @@ warnings.simplefilter('default')
 
 # probably not going to be able to tell the difference between WMAP5 and Planck 18 with this method...
 
-
-# In[37]:
-
-
 masses = [10**13, 10**14, 10**15]
 zeds = [0.0, 0.3, 1.0]
 cosmologies = ['pl18_lowOm0','planck18','pl18_hiOm0']
@@ -628,19 +560,11 @@ plot_3cosmos(masses, zeds, cosmologies, fancy_cosms, conc_model='vdb', mah_retri
 
 # changing Omega_matter has a reasonable effect
 
-
-# In[38]:
-
-
 cosmologies = ['pl18_lows8','planck18','pl18_his8']
 fancy_cosms = [r'$\sigma_8=%.2f$' % cosmology.cosmologies[cosmologies[0]]['sigma8'], r'Fiducial', r'$\sigma_8=%.2f$' % cosmology.cosmologies[cosmologies[-1]]['sigma8']]
 plot_3cosmos(masses, zeds, cosmologies, fancy_cosms, conc_model='vdb', mah_retriever=vdb_mah);
 
 # changing sigma_8 has a very large effect
-
-
-# In[39]:
-
 
 cosmologies = ['pl18_lowH0','planck18','pl18_hiH0']
 fancy_cosms = [r'$H_0=%.0f$ km/s/Mpc' % cosmology.cosmologies[cosmologies[0]]['H0'], r'Fiducial', r'$H_0=%.0f$ km/s/Mpc' % cosmology.cosmologies[cosmologies[-1]]['H0']]
@@ -648,17 +572,9 @@ plot_3cosmos(masses, zeds, cosmologies, fancy_cosms, conc_model='vdb', mah_retri
 
 # H_0 has basically no effect
 
-
-# In[19]:
-
-
 for cosm in ['pl18_s8_1_1','pl18_s8_1_2', 'planck18', 'pl18_s8_p6_1', 'pl18_s8_p6_2']:
     cosmology.setCosmology(cosm)
     print(cosmology.getCurrent())
-
-
-# In[22]:
-
 
 # testing varying s8, first with the high S_8
 # then with the low S_8
@@ -675,13 +591,8 @@ fancy_cosms = [r'$\Omega_\mathrm{m,0}=%.2f$, $\sigma_8=%.2f$' % (cosmology.cosmo
                r'$\Omega_\mathrm{m,0}=%.2f$, $\sigma_8=%.2f$' % (cosmology.cosmologies[cosmologies[4]]['Om0'], cosmology.cosmologies[cosmologies[4]]['sigma8'])]
 fig, ax = plot_3cosmos(masses, zeds, cosmologies, fancy_cosms, conc_model='vdb', mah_retriever=vdb_mah);
 
-
-# In[ ]:
-
-
 # Frank suggests using the ludlow16 or diemer19 model
 # Frank will send a merger tree code that we can use!!
 # When using the individual merger trees, we need to use Zhao+09 or Ludlow+16 for concentrations that depend on M(z) hist!
 # --> Make sure that Diemer 19 doesn't have a better way to do it that uses individual MAHs
 # he suggests to plot the MAHs for different masses and cosmologies to show that the errors overlap
-
