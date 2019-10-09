@@ -718,7 +718,7 @@ def multimah(Mobs, z_obs, cosmo, Nmah, tp='average'):
     return mah, std, redshifts, lbtime
 
 
-# In[250]:
+# In[266]:
 
 
 # let's look at some test cases: z=0, 10**13 Msun, individual and median/average MAHs
@@ -749,7 +749,25 @@ plt.ylabel(r'$M_\odot$')
 plt.title(r'Individual MAHs')
 
 
-# In[251]:
+# In[269]:
+
+
+# what about comparison directly to vdB+14 PWGH?
+vd = vdb_mah(10**13, 0.0, cosmo)
+
+loglogplot()
+plt.plot(1+vd[:,0],vd[:,1], label='vdB+14')
+mah, std, redshifts, lbtime = multimah(10**13, 0.0,cosmo,1000, tp='average')
+plt.errorbar(1+redshifts[msk], mah[msk], std[msk].T)
+plt.xlim(1,10)
+plt.ylim(10**11,10**13)
+plt.xlabel(r'$1+z$')
+plt.ylabel(r'$M$')
+
+# looks pretty close... let's see how different the concentration models are...
+
+
+# In[271]:
 
 
 # demonstrating that the MAH masses at a given redshift are not normally distributed
@@ -762,10 +780,10 @@ plot()
 plt.hist(mah[:,numz], bins='sqrt')
 
 
-# In[253]:
+# In[278]:
 
 
-mah, std, redshifts, lbtime = multimah(10**13, 0.0,cosmo,1000, tp='median')
+mah, std, redshifts, lbtime = multimah(10**13, 0.0,cosmo,1000, tp='average')
 
 z0 = 0.0
 t0 = cosmo.age(z0)
@@ -781,7 +799,11 @@ for i in range(0,nz_msk):
     concs[i] = zhao_vdb_conc(t, t04)
 
 loglogplot()
-plt.plot(1+redshifts[msk], concs)
+plt.plot(1+redshifts[msk], concs, label='vdB+14 MC MAH Avg')
+plt.plot(1+vd[:,0],vd[:,2], label='vdB+14 PWGH Avg')
+plt.xlabel(r'$1+z$')
+plt.ylabel(r'$c$')
+plt.legend()
 
 # these concentrations are in agreement with Frank's Coming of Age paper
 
@@ -924,13 +946,14 @@ fnth_quant, rads = gen_fnth_avg_mean(mass, zed, cosmo, tp='median')
 fnth_avg, rads = gen_fnth_avg_mean(mass, zed, cosmo, tp='average')
 
 
-# In[256]:
+# In[275]:
 
 
 plot()
 # so the distributions of f_nth are fairly LOGnormal aside from the zeros...
 # is plotting the average of the logs and the standard deviation of the logs the right move?
 plt.hist(np.log10(fnth_inds[:,10][fnth_inds[:,10] != 0]), bins='sqrt')
+plt.xlabel(r'$\log_{10}[f_\mathrm{nth}(r/r_\mathrm{vir} = %.2f)]$' % (rads[10]/rads[-1]))
 len(np.where(fnth_inds[:,20] == 0)[0])
 len(np.where(fnth_inds[:,10] == 0)[0]) # this is a large fraction
 len(np.where(fnth_inds[:,0] == 0)[0]) # huge fraction, likely the problem. the solution may be to take smaller timesteps?
@@ -1011,6 +1034,9 @@ def p_2_y(r,p,ind):
 # 4. Decide if we should set to zero the sigma_nth whenever it goes negative or just set to zero if negative at end?
 # 5. Write code that plots the 3x3 panel for Planck18, talk with Han about running for some other cosmologies?
 # 6. Figure out how to get the y_SZ plots...
+# 7. Test the effects of the different timestepping to see if that is responsible for disagreement between black and blue
+#    curves in the figure above. vdB+14 Avg PWGH and vdB+14 Avg MAH should agree, and the reason they don't has to be
+#    related to the timestepping of the integration or some other effect... check for bugs as well
 
 # let's see how different the results are:
 # 1. Run the MAH and the upper/lower bounds through the pipeline
