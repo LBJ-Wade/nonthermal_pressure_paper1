@@ -936,7 +936,7 @@ len(np.where(fnth_inds[:,10] == 0)[0]) # this is a large fraction
 len(np.where(fnth_inds[:,0] == 0)[0]) # huge fraction, likely the problem. the solution may be to take smaller timesteps?
 
 
-# In[257]:
+# In[261]:
 
 
 fig, ax = plot()
@@ -947,7 +947,7 @@ mass = 10**13
 zed = 0.0
 cosmo = cosmology.setCosmology('planck18')
 fnth, rads, _, _ = gen_fnth(mass, zed, cosmo, mah_retriever=vdb_mah, mass_def='vir', conc_model='vdb', beta=beta_def, eta=eta_def)
-ax.plot(np.log10(rads/rads[-1]), np.log10(fnth))
+ax.plot(np.log10(rads/rads[-1]), np.log10(fnth), label=r'vdB+14 PWGH Average')
 mds = np.median(fnth_inds, axis=0)
 quant16 = mds - np.percentile(fnth_inds, 16, axis=0)
 quant84 = np.percentile(fnth_inds, 84, axis=0) - mds
@@ -962,17 +962,17 @@ for i in range(0,len(rads)):
 # we're taking the average of the logs and the std dev of the logs, since they are log normally distributed
 # now, we can divide by sqrt(N)
     
-print(fnth_stds)
-
 #ax.errorbar(rads/rads[-1], np.median(fnth_inds, axis=0), np.array([quant16,quant84]))
 #ax.plot(rads/rads[-1], fnth_quant[0,:], color='k')
 #ax.plot(np.log10(rads/rads[-1]), np.log10(fnth_quant[1,:]), color='y')
 #ax.plot(rads/rads[-1], fnth_quant[2,:], color='r')
 #ax.errorbar(rads/rads[-1], fnth_quant[1,:], np.array([fnth_quant[1,:] - fnth_quant[0,:], fnth_quant[2,:] - fnth_quant[1,:]]))
-ax.errorbar(np.log10(rads/rads[-1]), fnth_avgs, fnth_stds)
-ax.plot(np.log10(rads/rads[-1]), np.log10(fnth_avg[1,:]), color='k')
-ax.set_xlabel(r'$r/r_\mathrm{vir}$')
-ax.set_ylabel(r'$f_\mathrm{nth}$')
+ax.errorbar(np.log10(rads/rads[-1]), fnth_avgs, fnth_stds, label=r'vdB MC MAH using Avg MAH')
+ax.plot(np.log10(rads/rads[-1]), np.log10(fnth_avg[1,:]), color='k', label=r'vdB MC MAH Code Log Avgs + Stds')
+ax.set_xlabel(r'$\log_{10}(r/r_\mathrm{vir})$')
+ax.set_ylabel(r'$\log_{10}(f_\mathrm{nth})$')
+ax.legend()
+ax.set_title(r'$10^{13}$ $M_\odot/h$ at $z=0$')
 
 # we want to overplot on this the MAH using the new approach
 
@@ -984,6 +984,8 @@ ax.set_ylabel(r'$f_\mathrm{nth}$')
 
 # In[ ]:
 
+
+# next step: look at the Compton y for Planck18 cosmology, use to plot completeness
 
 def p_2_y(r,p,ind):
     '''
