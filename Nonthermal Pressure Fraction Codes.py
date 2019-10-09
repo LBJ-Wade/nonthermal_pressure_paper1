@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # coding: utf-8
 
-# In[2]:
+# In[135]:
 
 
 import numpy as np
@@ -17,10 +17,19 @@ import subprocess
 from os import getcwd
 from os.path import isfile
 import warnings
+from pathlib import Path
+from os.path import expanduser
 get_ipython().run_line_magic('matplotlib', 'inline')
 
 
-# In[3]:
+# In[21]:
+
+
+home_dir = Path(expanduser('~'))
+multimah_root = home_dir / 'frank_mah/output'
+
+
+# In[2]:
 
 
 # will need to test sensitivity to:
@@ -29,7 +38,7 @@ get_ipython().run_line_magic('matplotlib', 'inline')
 # 3. Various cosmologies
 
 
-# In[4]:
+# In[5]:
 
 
 # global variables
@@ -79,7 +88,7 @@ cosmology.addCosmology('pl18_hiH0', fiducial_params)
 print(cosmology.getCurrent())
 
 
-# In[5]:
+# In[6]:
 
 
 # cosmologies to test the effect of varying S8 instead...
@@ -502,7 +511,7 @@ plt.ylabel(r'$\sigma_\mathrm{tot}$ [km/s]')
 warnings.simplefilter('default')
 
 
-# In[18]:
+# In[103]:
 
 
 warnings.simplefilter('ignore')
@@ -598,7 +607,7 @@ def plot_3cosmos(masses, zeds, cosmologies, fancy_cosms, mah_retriever=vdb_mah, 
 
     for i in range(0,len(masses)):
         ax[i,0].set_ylabel(r'$f_\mathrm{nth}$')
-        ax[i,0].text(1.3e-2,3e-1,r'$\log_{10}(M_\mathrm{vir})=%.1f$' % np.log10(masses[i]), fontsize=16)
+        ax[i,0].text(1.3e-2,3e-1,r'$\log_{10}(M_\mathrm{vir}/[h^{-1}M_\odot])=%.1f$' % np.log10(masses[i]), fontsize=16)
     for i in range(0,len(zeds)):
         ax[len(masses)-1,i].set_xlabel(r'$r/r_\mathrm{vir}$')
         ax[0,i].text(1.3e-2,1.7e-1,r'$z=%.1f$' % zeds[i], fontsize=16)
@@ -676,12 +685,332 @@ fancy_cosms = [r'$\Omega_\mathrm{m,0}=%.2f$, $\sigma_8=%.2f$' % (cosmology.cosmo
 fig, ax = plot_3cosmos(masses, zeds, cosmologies, fancy_cosms, conc_model='vdb', mah_retriever=vdb_mah);
 
 
+# In[139]:
+
+
+def multimah(Mobs, z_obs, cosmo, Nmah, tp='average'):
+    # loads in an array of MAH from Frank's MAH code, specify Nmah = number of MAH to get
+    mass_int = int(np.log10(Mobs)*10)
+    z_int = int(z_obs*100)
+    mah_dir = multimah_root / ('%s/m%03d/z%03d' % (cosmo.name, mass_int, z_int))
+    dat1 = np.loadtxt(mah_dir / 'MAH0001.dat')
+    redshifts = dat1[:,1]
+    lbtime = dat1[:,2]
+    nz = len(dat1)
+    dat = np.zeros((Nmah, nz))
+    std = np.zeros((nz,2))
+    for i in range(0,Nmah):
+        dat[i,:] = np.loadtxt(mah_dir / ('MAH%04d.dat' %(i+1)), usecols=3)
+    dat = 10**dat
+    if(tp == 'full'):
+        # return the full array instead of giving standard deviations
+        return dat*Mobs, redshifts, lbtime
+    elif(tp == 'average'):
+        mah = np.average(dat, axis=0)
+        std[:,0] = np.std(dat, axis=0)
+        std[:,1] = std[:,0]
+    elif(tp == 'median'):
+        mah = np.median(dat, axis=0)
+        std[:,0] = mah - np.percentile(dat, 16, axis=0)
+        std[:,1] = np.percentile(dat, 84, axis=0) - mah
+    mah = mah * Mobs
+    std = std * Mobs
+    return mah, std, redshifts, lbtime
+
+
+# In[250]:
+
+
+# let's look at some test cases: z=0, 10**13 Msun, individual and median/average MAHs
+
+cosmo = cosmology.setCosmology('planck18')
+
+mah, std, redshifts, lbtime = multimah(10**13, 0.0,cosmo,1000, tp='median')
+
+loglogplot()
+msk = redshifts < 10
+plt.errorbar(1+redshifts[msk], mah[msk], std[msk].T)
+plt.plot(1+redshifts[msk], mah[msk] - std[msk,0], color='k')
+plt.plot(1+redshifts[msk], mah[msk] + std[msk,1], color='k')
+#mah, std, redshifts, lbtime = multimah(10**13, 0.0,cosmo,1000, tp='average')
+#plt.errorbar(1+redshifts[msk], mah[msk], std[msk].T)
+plt.xlabel(r'$1+z$')
+plt.ylabel(r'$M_\odot$')
+plt.title(r'Median MAHs + 16/84 Percentiles')
+
+mah, redshifts, lbtime = multimah(10**13, 0.0,cosmo,1000, tp='full')
+
+loglogplot()
+msk = redshifts < 6.
+for i in range(0, 40):
+    plt.plot(1+redshifts[msk], mah[i,msk])
+plt.xlabel(r'$1+z$')
+plt.ylabel(r'$M_\odot$')
+plt.title(r'Individual MAHs')
+
+
+# In[251]:
+
+
+# demonstrating that the MAH masses at a given redshift are not normally distributed
+mah, redshifts, lbtime = multimah(10**13, 0.0,cosmo,1000, tp='full')
+plot()
+numz = 20
+print(redshifts[numz])
+plt.hist(np.log10(mah[:,numz]), bins='sqrt')
+plot()
+plt.hist(mah[:,numz], bins='sqrt')
+
+
+# In[253]:
+
+
+mah, std, redshifts, lbtime = multimah(10**13, 0.0,cosmo,1000, tp='median')
+
+z0 = 0.0
+t0 = cosmo.age(z0)
+
+nz_msk = len(redshifts[msk])
+concs = np.zeros(nz_msk)
+
+for i in range(0,nz_msk):
+    t = t0 - lbtime[i]
+    m04 = 0.04 * mah[i]
+    t04_ind = np.where(mah > m04)[0][-1]
+    t04 = t0 - lbtime[t04_ind]
+    concs[i] = zhao_vdb_conc(t, t04)
+
+loglogplot()
+plt.plot(1+redshifts[msk], concs)
+
+# these concentrations are in agreement with Frank's Coming of Age paper
+
+
+# In[247]:
+
+
+# modifying the gen_fnth function to do it using the individual MAHs from Frank's code
+# as well as to compute fnth using the percentiles/median of the MAHs from Frank's code
+
+def zhao_vdb_conc(t, t04):
+    return 4.0 * (1.0 + (t / (3.40*t04))**6.5)**(1.0/8.0)
+
+# IMPLEMENT LUDLOW 16 MODEL HERE
+
+def gen_fnth_ind(Mobs, zobs, cosmo, mass_def='vir', conc_model=zhao_vdb_conc, Nmah=1000, beta=beta_def, eta=eta_def, nrads=30, zi=6.):
+    #takes in Mobs, zobs, cosmo
+    #returns f_nth, sig2nth, sig2tot at z=zobs
+
+    mah, redshifts, lbtime = multimah(Mobs, zobs, cosmo, Nmah, tp='full')
+    z6_snap = np.where(redshifts <= zi)[0][-1] + 1 #first snap over z=6
+    #data = data[first_snap_to_use:]
+    t0 = cosmo.age(0) # this way we can easily get proper times using the lookback times from Frank's files
+
+    n_steps = z6_snap
+
+    Robs = mass_so.M_to_R(Mobs, zobs, mass_def)
+
+    rads = np.logspace(np.log10(0.01*Robs),np.log10(Robs), nrads)
+
+    ds2dt = np.zeros((Nmah, n_steps, nrads))
+    sig2tots = np.zeros((Nmah, n_steps, nrads))
+    sig2nth = np.zeros((Nmah, n_steps, nrads))
+    fnth    = np.zeros((Nmah,nrads))
+
+    for mc in range(0,Nmah):
+        if(mc % 10 == 0):
+            print(mc)
+        for i in range(z6_snap,0,-1):
+            z_1 = redshifts[i] #first redshift
+            z_2 = redshifts[i-1] #second redshift, the one we are actually at
+            dt = lbtime[i] - lbtime[i-1] # in Gyr
+            mass_1 = mah[mc, i] #dat = np.zeros((Nmah, nz))
+            mass_2 = mah[mc, i-1]
+            dM = mass_2 - mass_1
+            dMdt = dM/dt # since the (i+1)th is computed between i+1 and i
+            R_1 = mass_so.M_to_R(mass_1, z_1, mass_def)
+            R_2 = mass_so.M_to_R(mass_2, z_2, mass_def)
+            
+            time_1 = t0 - lbtime[i]
+            time_2 = t0 - lbtime[i-1]
+            m04_1  = 0.04 * mass_1
+            m04_2  = 0.04 * mass_2
+            t04_ind_1 = np.where(mah[mc,:] > m04_1)[0][-1]
+            t04_ind_2 = np.where(mah[mc,:] > m04_2)[0][-1]
+            t04_1 = t0 - lbtime[t04_ind_1]
+            t04_2 = t0 - lbtime[t04_ind_2]
+
+            c_1 = conc_model(time_1, t04_1) 
+            c_2 = conc_model(time_2, t04_2)
+            sig2tots[mc,i-1,:] = sig2_tot(rads, mass_2, c_2, R_2) # second snapshot
+            if(i==z6_snap):
+                ds2dt[mc,i-1,:] = (sig2tots[mc,i-1,:] - sig2_tot(rads, mass_1, c_1, R_1)) / dt # see if this works better, full change
+                sig2nth[mc,i-1,:] = eta_def * sig2tots[mc,i-1,:] # starts at z_i = 6 roughly
+            else:
+                ds2dt[mc,i-1,:] = (sig2tots[mc,i-1,:] - sig2tots[mc,i,:]) / dt
+                td = t_d(rads, mass_2, z_2, c_2, R_2, beta=beta_def) #t_d at z of interest z_2
+                sig2nth[mc,i-1,:] = sig2nth[mc,i,:] + ((-1. * sig2nth[mc,i,:] / td) + eta_def * ds2dt[mc,i-1,:])*dt
+                sig2nth[mc,i-1, sig2nth[mc,i-1,:] < 0] = 0 #can't have negative sigma^2_nth
+        fnth[mc,:] = sig2nth[mc,0,:] / sig2tots[mc,0,:]
+    #fnth[fnth < 0] = 0
+    return fnth, rads #, sig2nth[-1,:], sig2tots[-1,:] #PENDING 
+
+def gen_fnth_avg_mean(Mobs, zobs, cosmo, mass_def='vir', conc_model=zhao_vdb_conc, tp='median', Nmah=1000, beta=beta_def, eta=eta_def, nrads=30, zi=6.):
+    mah, std, redshifts, lbtime = multimah(Mobs, zobs, cosmo, Nmah, tp)
+    z6_snap = np.where(redshifts <= zi)[0][-1] + 1 #first snap over z=6
+    #data = data[first_snap_to_use:]
+    t0 = cosmo.age(zobs)
+
+    n_steps = z6_snap
+
+    Robs = mass_so.M_to_R(Mobs, zobs, mass_def)
+
+    rads = np.logspace(np.log10(0.01*Robs),np.log10(Robs), nrads)
+
+    ds2dt = np.zeros((3, n_steps, nrads))
+    sig2tots = np.zeros((3, n_steps, nrads))
+    sig2nth = np.zeros((3, n_steps, nrads))
+    fnth    = np.zeros((3,nrads))
+    
+    mah = np.array([mah - std[:,0], mah, mah + std[:,1]])
+
+    for mc in range(0,3):
+        for i in range(z6_snap,0,-1):
+            z_1 = redshifts[i] #first redshift
+            z_2 = redshifts[i-1] #second redshift, the one we are actually at
+            dt = lbtime[i] - lbtime[i-1] # in Gyr
+            mass_1 = mah[mc, i] #dat = np.zeros((Nmah, nz))
+            mass_2 = mah[mc, i-1]
+            dM = mass_2 - mass_1
+            dMdt = dM/dt # since the (i+1)th is computed between i+1 and i
+            R_1 = mass_so.M_to_R(mass_1, z_1, mass_def)
+            R_2 = mass_so.M_to_R(mass_2, z_2, mass_def)
+            
+            time_1 = t0 - lbtime[i]
+            time_2 = t0 - lbtime[i-1]
+            m04_1  = 0.04 * mass_1
+            m04_2  = 0.04 * mass_2
+            t04_ind_1 = np.where(mah[mc,:] > m04_1)[0][-1]
+            t04_ind_2 = np.where(mah[mc,:] > m04_2)[0][-1]
+            t04_1 = t0 - lbtime[t04_ind_1]
+            t04_2 = t0 - lbtime[t04_ind_2]
+
+            c_1 = conc_model(time_1, t04_1) 
+            c_2 = conc_model(time_2, t04_2)
+            sig2tots[mc,i-1,:] = sig2_tot(rads, mass_2, c_2, R_2) # second snapshot
+            if(i==z6_snap):
+                # update this to accept general eta
+                ds2dt[mc,i-1,:] = (sig2tots[mc,i-1,:] - sig2_tot(rads, mass_1, c_1, R_1)) / dt # see if this works better, full change
+                sig2nth[mc,i-1,:] = eta_def * sig2tots[mc,i-1,:] # starts at z_i = 6 roughly
+            else:
+                ds2dt[mc,i-1,:] = (sig2tots[mc,i-1,:] - sig2tots[mc,i,:]) / dt
+                td = t_d(rads, mass_2, z_2, c_2, R_2, beta=beta_def) #t_d at z of interest z_2
+                sig2nth[mc,i-1,:] = sig2nth[mc,i,:] + ((-1. * sig2nth[mc,i,:] / td) + eta_def * ds2dt[mc,i-1,:])*dt
+                sig2nth[mc,i-1, sig2nth[mc,i-1,:] < 0] = 0 #can't have negative sigma^2_nth 
+        fnth[mc,:] = sig2nth[mc,0,:] / sig2tots[mc,0,:]
+    return fnth, rads #, sig2nth[-1,:], sig2tots[-1,:] #PENDING 
+
+
+# In[254]:
+
+
+fnth_inds, rads = gen_fnth_ind(mass, zed, cosmo)
+
+
+# In[255]:
+
+
+fnth_quant, rads = gen_fnth_avg_mean(mass, zed, cosmo, tp='median')
+fnth_avg, rads = gen_fnth_avg_mean(mass, zed, cosmo, tp='average')
+
+
+# In[256]:
+
+
+plot()
+# so the distributions of f_nth are fairly LOGnormal aside from the zeros...
+# is plotting the average of the logs and the standard deviation of the logs the right move?
+plt.hist(np.log10(fnth_inds[:,10][fnth_inds[:,10] != 0]), bins='sqrt')
+len(np.where(fnth_inds[:,20] == 0)[0])
+len(np.where(fnth_inds[:,10] == 0)[0]) # this is a large fraction
+len(np.where(fnth_inds[:,0] == 0)[0]) # huge fraction, likely the problem. the solution may be to take smaller timesteps?
+
+
+# In[257]:
+
+
+fig, ax = plot()
+ax.set_ylim(np.log10(2.5e-4),np.log10(0.8))
+ax.set_xlim(np.log10(0.8*1e-2),np.log10(1*1.2))
+
+mass = 10**13
+zed = 0.0
+cosmo = cosmology.setCosmology('planck18')
+fnth, rads, _, _ = gen_fnth(mass, zed, cosmo, mah_retriever=vdb_mah, mass_def='vir', conc_model='vdb', beta=beta_def, eta=eta_def)
+ax.plot(np.log10(rads/rads[-1]), np.log10(fnth))
+mds = np.median(fnth_inds, axis=0)
+quant16 = mds - np.percentile(fnth_inds, 16, axis=0)
+quant84 = np.percentile(fnth_inds, 84, axis=0) - mds
+
+fnth_avgs = np.zeros(len(rads))
+fnth_stds = np.zeros(len(rads))
+
+for i in range(0,len(rads)):
+    fnth_avgs[i] = np.mean(np.log10(fnth_inds[:,i][fnth_inds[:,i] != 0]))
+    fnth_stds[i] = np.std(np.log10(fnth_inds[:,i][fnth_inds[:,i] != 0]))
+    
+# we're taking the average of the logs and the std dev of the logs, since they are log normally distributed
+# now, we can divide by sqrt(N)
+    
+print(fnth_stds)
+
+#ax.errorbar(rads/rads[-1], np.median(fnth_inds, axis=0), np.array([quant16,quant84]))
+#ax.plot(rads/rads[-1], fnth_quant[0,:], color='k')
+#ax.plot(np.log10(rads/rads[-1]), np.log10(fnth_quant[1,:]), color='y')
+#ax.plot(rads/rads[-1], fnth_quant[2,:], color='r')
+#ax.errorbar(rads/rads[-1], fnth_quant[1,:], np.array([fnth_quant[1,:] - fnth_quant[0,:], fnth_quant[2,:] - fnth_quant[1,:]]))
+ax.errorbar(np.log10(rads/rads[-1]), fnth_avgs, fnth_stds)
+ax.plot(np.log10(rads/rads[-1]), np.log10(fnth_avg[1,:]), color='k')
+ax.set_xlabel(r'$r/r_\mathrm{vir}$')
+ax.set_ylabel(r'$f_\mathrm{nth}$')
+
+# we want to overplot on this the MAH using the new approach
+
+# this should look exactly like Frank's I think... maybe not?
+
+# this seems to agree pretty well with Frank's PWGH code here down to small logr, but then it blows up
+# this is probably because we aren't accounting for a large fraction of f_nth values that are zero
+
+
 # In[ ]:
 
 
-# Frank suggests using the ludlow16 or diemer19 model
-# Frank will send a merger tree code that we can use!!
-# When using the individual merger trees, we need to use Zhao+09 or Ludlow+16 for concentrations that depend on M(z) hist!
-# --> Make sure that Diemer 19 doesn't have a better way to do it that uses individual MAHs
-# he suggests to plot the MAHs for different masses and cosmologies to show that the errors overlap
+def p_2_y(r,p,ind):
+    '''
+    Discrete Integration for y, calculate \int P dl, l=np.sqrt(r3d^2-r2d^2).
+    If P is in unit of P200m, r in unit of R200m, y is in unit of P200m*R200m.
+    r is 3D radius (r3d), P is pressure, ind is index of 2D radius array (r2d) you want y value for.
+    Assume 2D radius array is same as 3D radius. Assume equal log space.
+    '''
+    dlogr = np.log(r[2]/r[1])
+    return np.sum(p[ind+1:]*r[ind+1:]**2*dlogr/np.sqrt(r[ind+1:]**2-r[ind]**2))
+
+
+# In[ ]:
+
+
+# current to-do list:
+# 1. Code up Ludlow16 concentration model and see how different the results are
+# 2. Run the analysis for Planck 18, M=13, z=0 using the individual MAHs and compare to PWGH
+# 3. Confirm whether or not the result for individual haloes agrees with the mean + std dev or median + 16/84
+# ---> Ask Frank about this... why such large standard deviation? Strange shape probably... this doesn't look good
+# ---> Can get results fairly consistent with PWGH for averages when we use averages of the logs and throw out the zeros
+#      at the end... need to find out if this is the right process
+# 4. Decide if we should set to zero the sigma_nth whenever it goes negative or just set to zero if negative at end?
+# 5. Write code that plots the 3x3 panel for Planck18, talk with Han about running for some other cosmologies?
+# 6. Figure out how to get the y_SZ plots...
+
+# let's see how different the results are:
+# 1. Run the MAH and the upper/lower bounds through the pipeline
+# 2. Run the individual MAHs through the pipeline and then take the std/16/84 on the individual f_nth values
 
