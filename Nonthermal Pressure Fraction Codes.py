@@ -685,7 +685,7 @@ fancy_cosms = [r'$\Omega_\mathrm{m,0}=%.2f$, $\sigma_8=%.2f$' % (cosmology.cosmo
 fig, ax = plot_3cosmos(masses, zeds, cosmologies, fancy_cosms, conc_model='vdb', mah_retriever=vdb_mah);
 
 
-# In[139]:
+# In[322]:
 
 
 def multimah(Mobs, z_obs, cosmo, Nmah, tp='average'):
@@ -709,6 +709,12 @@ def multimah(Mobs, z_obs, cosmo, Nmah, tp='average'):
         mah = np.average(dat, axis=0)
         std[:,0] = np.std(dat, axis=0)
         std[:,1] = std[:,0]
+    elif(tp == 'logaverage'):
+        mah = np.average(np.log10(dat), axis=0)
+        std[:,0] = np.std(np.log10(dat), axis=0)
+        std[:,1] = std[:,0]
+        mah = 10**mah
+        std = 10**std
     elif(tp == 'median'):
         mah = np.median(dat, axis=0)
         std[:,0] = mah - np.percentile(dat, 16, axis=0)
@@ -749,7 +755,7 @@ plt.ylabel(r'$M_\odot$')
 plt.title(r'Individual MAHs')
 
 
-# In[269]:
+# In[324]:
 
 
 # what about comparison directly to vdB+14 PWGH?
@@ -765,6 +771,49 @@ plt.xlabel(r'$1+z$')
 plt.ylabel(r'$M$')
 
 # looks pretty close... let's see how different the concentration models are...
+
+
+# In[309]:
+
+
+# compare dM/dt values between
+loglogplot()
+plt.plot(1+vd[:,0],vd[:,3], label='vdB+14 PWGH')
+
+mah, std, redshifts, lbtime = multimah(10**13, 0.0,cosmo,1000, tp='average')
+dMdt = (mah[:-1] - mah[1:])/(lbtime[1:] - lbtime[:-1])
+plt.plot(1+redshifts[:-1], dMdt)
+
+# let's try an interpolator and see if that helps... could interpolate the dM/dt and the concentration
+# other than this, we should see if it is because of the concentrations
+# also seems like the MAH is much higher in the average than in the PWGH case at low z, which could be responsible for
+# why the average (black curve) f_nth is higher than the PWGH prediction
+
+# I think ultimately we should trust the MC MAHs more than the PWGH though, since this is the true average of a
+# population instead of a model meant to estimate the average
+
+# Need to figure out what to do with the zeros and how to properly deal with negative pressure in the integration
+# Also need to see if the timesteps make much of a difference
+
+# then can make the 3x3 plot and send to Daisuke, start talking about doing y_sz
+
+mah_interp = interp(-1.*lbtime[::-1], mah[::-1], k=3)
+dmass_dt = mah_interp.derivative()
+
+plt.plot(1+redshifts, dmass_dt(-1.*lbtime)) # this isn't much better... would be smoother if we used higher-order derivative
+
+grad_dmdt = np.gradient(mah[::-1], -1.*lbtime[::-1], edge_order=1)
+plt.plot(1+redshifts, grad_dmdt[::-1])
+
+plt.xlim(1,10)
+plt.ylim(10**11,1.1*10**12)
+plt.xlabel(r'$1+z$')
+plt.ylabel(r'$\mathrm{d}M/\mathrm{d}t$')
+
+# FINDING: The dM/dt of the average MC MAH is consistently higher for various different masses
+# This explains why there is a systematic increase in f_nth for the MC MAH vs. the vdB+14 PWGH code
+# There is nothing wrong with them disagreeing... the PWGH code is just based off of a model, but we should
+# trust the outputs from the MC MAH over the PWGH.
 
 
 # In[271]:
@@ -808,7 +857,7 @@ plt.legend()
 # these concentrations are in agreement with Frank's Coming of Age paper
 
 
-# In[247]:
+# In[310]:
 
 
 # modifying the gen_fnth function to do it using the individual MAHs from Frank's code
@@ -933,7 +982,7 @@ def gen_fnth_avg_mean(Mobs, zobs, cosmo, mass_def='vir', conc_model=zhao_vdb_con
     return fnth, rads #, sig2nth[-1,:], sig2tots[-1,:] #PENDING 
 
 
-# In[254]:
+# In[311]:
 
 
 fnth_inds, rads = gen_fnth_ind(mass, zed, cosmo)
@@ -946,20 +995,23 @@ fnth_quant, rads = gen_fnth_avg_mean(mass, zed, cosmo, tp='median')
 fnth_avg, rads = gen_fnth_avg_mean(mass, zed, cosmo, tp='average')
 
 
-# In[275]:
+# In[319]:
 
+
+# demonstration that the f_nth seem to be lognormally distributed at each radius
 
 plot()
+ind = 15
 # so the distributions of f_nth are fairly LOGnormal aside from the zeros...
 # is plotting the average of the logs and the standard deviation of the logs the right move?
-plt.hist(np.log10(fnth_inds[:,10][fnth_inds[:,10] != 0]), bins='sqrt')
+plt.hist(np.log10(fnth_inds[:,ind][fnth_inds[:,ind] != 0]), bins='sqrt')
 plt.xlabel(r'$\log_{10}[f_\mathrm{nth}(r/r_\mathrm{vir} = %.2f)]$' % (rads[10]/rads[-1]))
-len(np.where(fnth_inds[:,20] == 0)[0])
-len(np.where(fnth_inds[:,10] == 0)[0]) # this is a large fraction
-len(np.where(fnth_inds[:,0] == 0)[0]) # huge fraction, likely the problem. the solution may be to take smaller timesteps?
+print(len(np.where(fnth_inds[:,20] == 0)[0]))
+print(len(np.where(fnth_inds[:,10] == 0)[0])) # this is a large fraction
+print(len(np.where(fnth_inds[:,0] == 0)[0])) # huge fraction, likely the problem. the solution may be to take smaller timesteps?
 
 
-# In[261]:
+# In[325]:
 
 
 fig, ax = plot()
@@ -981,7 +1033,9 @@ fnth_stds = np.zeros(len(rads))
 for i in range(0,len(rads)):
     fnth_avgs[i] = np.mean(np.log10(fnth_inds[:,i][fnth_inds[:,i] != 0]))
     fnth_stds[i] = np.std(np.log10(fnth_inds[:,i][fnth_inds[:,i] != 0]))
-    
+    #fnth_avgs[i] = np.log10(np.mean(fnth_inds[:,i][fnth_inds[:,i] != 0]))
+    #fnth_stds[i] = np.log10(np.std(fnth_inds[:,i][fnth_inds[:,i] != 0]))
+        
 # we're taking the average of the logs and the std dev of the logs, since they are log normally distributed
 # now, we can divide by sqrt(N)
     
@@ -1004,6 +1058,74 @@ ax.set_title(r'$10^{13}$ $M_\odot/h$ at $z=0$')
 # this seems to agree pretty well with Frank's PWGH code here down to small logr, but then it blows up
 # this is probably because we aren't accounting for a large fraction of f_nth values that are zero
 
+# Since f_nth for the MC MAH are larger, this makes sense because the recent dM/dt is larger for this case than
+# for Frank's PWGH model. Hence, since dsigma_nth^2/dt proportional to dM/dt, the recent growth results in larger
+# f_nth
+
+# Interestingly the MC MAH average and the average of the f_nth using the individual MAHs agree really well
+# for large radii, where the results are less sensitive to fluctuations at the last few timesteps
+# They both disagree with Frank's PWGH code, but this is because the PWGH model seems to have a systematically lower
+# dM/dt in all cases for late times
+
+# Hence, all of the results seem to make sense, and the last question for this part of the analysis is whether or
+# not we should take the average/std of the logs or not. The f_nth seem to be lognormally distributed for each radius
+
+
+# In[333]:
+
+
+def plot_3by3_mcmah(masses, zeds, cosmologies, fancy_cosms, conc_model=zhao_vdb_conc, mass_def='vir', beta=beta_def, eta=eta_def, tp='logmean'):
+    fig, ax = plt.subplots(nrows=len(masses),ncols=len(zeds),figsize=(13,13), sharex=True, sharey=True, gridspec_kw={'wspace':0.05,'hspace':0.075})
+    for i in range(0,3):
+        for j in range(0,3):
+            ax[i,j].yaxis.set_ticks_position('both')
+            ax[i,j].xaxis.set_ticks_position('both')
+            ax[i,j].tick_params(axis='both', which='minor', colors='black', width=1.0, length=2.0)
+            #ax[i,j].loglog()
+            ax[i,j].set_ylim(np.log10(2.5e-4),np.log10(0.8))
+            ax[i,j].set_xlim(np.log10(0.8*1e-2),np.log10(1*1.2))
+            #ax[i,j].xaxis.set_minor_locator(MultipleLocator(0.2))
+            #ax[i,j].yaxis.set_minor_locator(MultipleLocator(0.05))
+
+
+    # can generate colors based on the cosmology
+
+    for i,m in enumerate(masses):
+        for j,z in enumerate(zeds):
+            for k,cosm in enumerate(cosmologies):
+                #print(i,j,k)
+                cosmo = cosmology.setCosmology(cosm)
+                fnth, rads = gen_fnth_ind(m, z, cosmo)
+                
+                # TODO: Add in different ways to deal with the zeros, and with log-e/log-10/non-log mean-ing 
+                
+                fnth_avgs = np.zeros(len(rads))
+                fnth_stds = np.zeros(len(rads))
+
+                for rdi in range(0,len(rads)):
+                    fnth_avgs[rdi] = np.mean(np.log10(fnth[:,rdi][fnth[:,rdi] != 0]))
+                    fnth_stds[rdi] = np.std(np.log10(fnth[:,rdi][fnth[:,rdi] != 0]))
+                ax[i,j].errorbar(np.log10(rads/rads[-1]), fnth_avgs, fnth_stds, label=fancy_cosms[k])
+                #ax[i,j].plot(rads/rads[-1], fnth, label=fancy_cosms[k])
+
+
+    for i in range(0,len(masses)):
+        ax[i,0].set_ylabel(r'$\log_{10}(f_\mathrm{nth})$')
+        ax[i,0].text(np.log10(1.3e-2),np.log10(3e-1),r'$\log_{10}(M_\mathrm{vir}/[h^{-1}M_\odot])=%.1f$' % np.log10(masses[i]), fontsize=16)
+    for i in range(0,len(zeds)):
+        ax[len(masses)-1,i].set_xlabel(r'$\log_{10}(r/r_\mathrm{vir})$')
+        ax[0,i].text(np.log10(1.3e-2),np.log10(1.7e-1),r'$z=%.1f$' % zeds[i], fontsize=16)
+
+    ax[1,len(zeds)-1].legend(frameon=False,fontsize=16)
+    return fig, ax
+
+masses = [10**13, 10**14, 10**15]
+zeds = [0.0, 0.3, 1.0]
+cosmologies = ['planck18']
+fancy_cosms = ["Planck '18"]
+
+plot_3by3_mcmah(masses, zeds, cosmologies, fancy_cosms)
+
 
 # In[ ]:
 
@@ -1019,6 +1141,18 @@ def p_2_y(r,p,ind):
     '''
     dlogr = np.log(r[2]/r[1])
     return np.sum(p[ind+1:]*r[ind+1:]**2*dlogr/np.sqrt(r[ind+1:]**2-r[ind]**2))
+
+
+# In[ ]:
+
+
+# plans for once we meet with Daisuke and Han:
+# 1. Decide on how to demonstrate results: what to do with zeros, how to deal with f_nth < 0 per time step, and 
+#    whether we should plot the log averages/std devs or what (log-e vs. log-10)? Add logmean vs. mean option to 3x3 plotter
+# 2. Decide on which cosmologies to do a cosmological constraint test with and how many samples to use in standard error.
+#    Also figure out if the standard error is relative to the logged standard dev or not
+# 3. Figure out how to compute the thermal pressure and compton y, decide what money plots we will need for this part
+#    and see if we can place constraints on the completeness fraction
 
 
 # In[ ]:
