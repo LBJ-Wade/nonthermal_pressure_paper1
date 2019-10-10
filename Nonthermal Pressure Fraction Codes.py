@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # coding: utf-8
 
-# In[135]:
+# In[359]:
 
 
 import numpy as np
@@ -16,6 +16,7 @@ import astropy.units as u
 import subprocess
 from os import getcwd
 from os.path import isfile
+from scipy.integrate import quad
 import warnings
 from pathlib import Path
 from os.path import expanduser
@@ -38,7 +39,7 @@ multimah_root = home_dir / 'frank_mah/output'
 # 3. Various cosmologies
 
 
-# In[5]:
+# In[343]:
 
 
 # global variables
@@ -88,7 +89,7 @@ cosmology.addCosmology('pl18_hiH0', fiducial_params)
 print(cosmology.getCurrent())
 
 
-# In[6]:
+# In[344]:
 
 
 # cosmologies to test the effect of varying S8 instead...
@@ -130,7 +131,7 @@ cosmo_dict = {'near_EdS': 'eeddss', 'WMAP5': 'WMAP05', 'planck18': 'plnk18',
 cosmo = cosmology.setCosmology('WMAP5')
 
 
-# In[7]:
+# In[345]:
 
 
 # mass-concentration relationships
@@ -157,7 +158,7 @@ plt.ylabel(r'$c$')
 # We probably want to use one of the all-cosmology c(M,z) since we will use different definitions of the virial radius
 
 
-# In[8]:
+# In[346]:
 
 
 # computing t_d from t_dyn
@@ -177,7 +178,7 @@ def t_d(r, M, z, c, R, beta=beta_def):
     return beta * t_dyn / s_per_Gyr / 2.
 
 
-# In[9]:
+# In[347]:
 
 
 # look at t_d vs. r for a 10^14 Msun/h halo to verify the results
@@ -202,7 +203,7 @@ plt.ylabel(r'$t_\mathrm{d}$ [Gyr]')
 # need to check later results to see if they actually use beta*t_dyn / 2 or beta*t_dyn for further stuff
 
 
-# In[10]:
+# In[355]:
 
 
 # Komatsu and Seljak Model
@@ -234,7 +235,7 @@ def theta(r, M, z, conc_model='diemer19', mass_def='vir'):
 
 # arbitrary units for now while we figure out what to do with the normalization
 # likely won't need this
-def rho_gas(r, M, z, conc_model='diemer19', mass_def='vir'):
+def rho_gas_unnorm(r, M, z, conc_model='diemer19', mass_def='vir'):
     c = concentration.concentration(M, mass_def, z, model=conc_model)
     return theta(r, M, z, conc_model, mass_def)**(1.0 / (Gamma(c) - 1.0))
 
@@ -271,7 +272,7 @@ plt.plot(concs, ((Gamma(concs) - 1.) / Gamma(concs)))
 plt.xlabel(r'$c_\mathrm{vir}$'); plt.ylabel(r'$\frac{\Gamma}{\Gamma - 1}$')
 
 
-# In[12]:
+# In[354]:
 
 
 mass = 10**14.5 #Msun/h
@@ -287,6 +288,46 @@ plt.ylabel(r'$\sigma_\mathrm{tot}$ [km/s]')
 # what happens to Komatsu-Seljak model when you have c < 6.5?
 
 # we now have recovered the result of Fig 4 from Komatsu and Seljak
+
+
+# In[406]:
+
+
+# let's see if we can get the normalization for the gas density, i.e. rho_gas(0)
+
+cbf = cosmo.Ob0 / cosmo.Om0
+cosmo_to_evcm3 = 4.224e-10
+
+def rho0(M, z, conc_model='diemer19', mass_def='vir'):
+    c = concentration.concentration(M, mass_def, z, model=conc_model)
+    R = mass_so.M_to_R(M, z, mass_def)
+    nume = cbf * M
+    denom = 4. * np.pi * quad(lambda r: theta(r, M, z, conc_model, mass_def)**(1.0 / (Gamma(c) - 1.0)) * r**2, 0, R)[0]
+    return nume/denom
+
+def rho_gas(r, M, z, conc_model='diemer19', mass_def='vir'):
+    c = concentration.concentration(M, mass_def, z, model=conc_model)
+    return rho0(M, z, conc_model, mass_def) * theta(r, M, z, conc_model, mass_def)**(1.0 / (Gamma(c) - 1.0))
+
+
+# let's plot a Ptot profile
+
+mass = 3e14  / (cosmo.H0 / 70.) * (cosmo.H0 / 100.) #Msun/h
+z = 0.1
+nr = 30
+Rvir = mass_so.M_to_R(mass, z, '500c') # kpc / h
+rads = np.logspace(np.log10(0.2*Rvir),np.log10(2.*Rvir), nr)
+pressure = sig2_tot(rads, mass, z, mass_def='500c', conc_model='duffy08') * rho_gas(rads, mass, z, conc_model='duffy08', mass_def='500c')
+
+loglogplot(figsize=(5,8))
+plt.plot(rads/Rvir, pressure*cosmo_to_evcm3 * (cosmo.H0/100.)**2)
+plt.xlabel(r'$r / r_\mathrm{500c}$')
+plt.ylabel(r'$P$ [eV/cm$^3$]')
+plt.xlim(0.2,2.0)
+plt.ylim(0.03, 30)
+
+# TODO: Figure out how to reproduce the Fig 6 in Komatsu et al.
+# There is an inconsistency here and it may have to do with factors of h and conversions between 500/vir defs
 
 
 # In[13]:
@@ -995,23 +1036,25 @@ fnth_quant, rads = gen_fnth_avg_mean(mass, zed, cosmo, tp='median')
 fnth_avg, rads = gen_fnth_avg_mean(mass, zed, cosmo, tp='average')
 
 
-# In[319]:
+# In[342]:
 
 
 # demonstration that the f_nth seem to be lognormally distributed at each radius
 
 plot()
-ind = 15
+ind = 20
 # so the distributions of f_nth are fairly LOGnormal aside from the zeros...
 # is plotting the average of the logs and the standard deviation of the logs the right move?
 plt.hist(np.log10(fnth_inds[:,ind][fnth_inds[:,ind] != 0]), bins='sqrt')
+#plt.hist(fnth_inds[:,ind], bins='sqrt')
+
 plt.xlabel(r'$\log_{10}[f_\mathrm{nth}(r/r_\mathrm{vir} = %.2f)]$' % (rads[10]/rads[-1]))
 print(len(np.where(fnth_inds[:,20] == 0)[0]))
 print(len(np.where(fnth_inds[:,10] == 0)[0])) # this is a large fraction
 print(len(np.where(fnth_inds[:,0] == 0)[0])) # huge fraction, likely the problem. the solution may be to take smaller timesteps?
 
 
-# In[325]:
+# In[340]:
 
 
 fig, ax = plot()
@@ -1031,10 +1074,10 @@ fnth_avgs = np.zeros(len(rads))
 fnth_stds = np.zeros(len(rads))
 
 for i in range(0,len(rads)):
-    fnth_avgs[i] = np.mean(np.log10(fnth_inds[:,i][fnth_inds[:,i] != 0]))
-    fnth_stds[i] = np.std(np.log10(fnth_inds[:,i][fnth_inds[:,i] != 0]))
-    #fnth_avgs[i] = np.log10(np.mean(fnth_inds[:,i][fnth_inds[:,i] != 0]))
-    #fnth_stds[i] = np.log10(np.std(fnth_inds[:,i][fnth_inds[:,i] != 0]))
+    #fnth_avgs[i] = np.mean(np.log10(fnth_inds[:,i][fnth_inds[:,i] != 0]))
+    #fnth_stds[i] = np.std(np.log10(fnth_inds[:,i][fnth_inds[:,i] != 0]))
+    fnth_avgs[i] = np.log10(np.mean(fnth_inds[:,i]))
+    fnth_stds[i] = np.log10(np.std(fnth_inds[:,i]))
         
 # we're taking the average of the logs and the std dev of the logs, since they are log normally distributed
 # now, we can divide by sqrt(N)
@@ -1069,6 +1112,8 @@ ax.set_title(r'$10^{13}$ $M_\odot/h$ at $z=0$')
 
 # Hence, all of the results seem to make sense, and the last question for this part of the analysis is whether or
 # not we should take the average/std of the logs or not. The f_nth seem to be lognormally distributed for each radius
+
+# mean of log vs log of mean... need to figure out which one makes more sense
 
 
 # In[333]:
@@ -1175,4 +1220,12 @@ def p_2_y(r,p,ind):
 # let's see how different the results are:
 # 1. Run the MAH and the upper/lower bounds through the pipeline
 # 2. Run the individual MAHs through the pipeline and then take the std/16/84 on the individual f_nth values
+
+
+# In[ ]:
+
+
+# Once we have a pressure profile, we can compute the Compton-y
+# Need to recode this so that it works for the MC MAHs
+# Then can plot the distributions of Compton-y and put Planck completeness threshold down
 
