@@ -173,6 +173,8 @@ def gen_obs(cosmo, beta=beta_def, eta=eta_def):
     sig2tots = np.zeros((n_steps, Nradii))
     sig2nth  = np.zeros((n_steps, Nradii))
     cvirs    = np.zeros(Nmah)
+    Rvirs    = np.zeros(Nmah)
+    R_5R500cs= np.zeros(Nmah)
     # The values that we will return and column_stack
     YSZv     = np.zeros((Nmah, len(radii_definitions)))
     Tmgasv   = np.zeros((Nmah, len(radii_definitions)))
@@ -182,11 +184,12 @@ def gen_obs(cosmo, beta=beta_def, eta=eta_def):
     for mc in range(0,Nmah):
         if(mc % 100 == 0):
             print(mc, flush=True)
-        # get cvir so that we can get Rdef
+        # get cvir so that we can get R500c
         t04_ind = np.where(mah[mc,:] > 0.04*masses[mc])[0][-1]
         cvir = conc_model(t0 - lbtime[0], t0 - lbtime[t04_ind])
-        Mdf, Rdef, _ = mass_defs.changeMassDefinition(masses[mc], c=cvir, z=zobs, mdef_in='vir', mdef_out='500c')
-        rds  = rads*Rdef #convert to physical units; using r500c, this goes out to 20x R500c
+        Mdf, R500c, _ = mass_defs.changeMassDefinition(masses[mc], c=cvir, z=zobs, mdef_in='vir', mdef_out='500c')
+        R_5R500cs[mc] = 5.0*R500c
+        rds  = rads*R500c #convert to physical units; using r500c, this goes out to 20x R500c
         # doing it this way ensures that we're using the same fractional radii for each cluster
 
         # integrate time to z=0 in order to get f_nth profile
@@ -228,6 +231,13 @@ def gen_obs(cosmo, beta=beta_def, eta=eta_def):
         # Now, we have fnth, so we can compute the pressure profile and use it to compute the thermal pressure profile
         Rvir = mass_so.M_to_R(masses[mc], zobs, 'vir')
         assert Rvir == Rvir_2 # the final one, it should
+        Rvirs[mc] = Rvir
+
+        # for computing the enclosed mass out to arbitrary radii
+        rhos, rs = profile_nfw.NFWProfile.fundamentalParameters(masses[mc], cvir, zobs, 'vir')
+        # need M(<5R500c) for gas mass normalization
+        M5R500c = quad(lambda x: 4. * np.pi * x**2 * nfw_prof(x, rhos, rs), 0, R_5R500cs[mc])[0]
+
 
         # compute rho_gas profile, use it to compute M_gas within Rdef and T_mgas within Rdef
         rho0_by_P0 = 3*eta0(cvirs[mc])**-1 * Rvir/(G*masses[mc])
@@ -235,16 +245,15 @@ def gen_obs(cosmo, beta=beta_def, eta=eta_def):
         phir = lambda rad: -1. * (cvirs[mc] / NFWf(cvirs[mc])) * (np.log(1. + cvirs[mc]*rad/Rvir) / (cvirs[mc]*rad/Rvir))
         theta = lambda rad: 1. + ((Gamma(cvirs[mc]) - 1.) / Gamma(cvirs[mc])) * 3. *eta0(cvirs[mc])**-1 * (phi0 - phir(rad))
 
-        rho0_nume = nume = cbf * masses[mc]
-        rho0_denom = 4. * np.pi * quad(lambda x: theta(x)**(1.0 / (Gamma(cvirs[mc]) - 1.0)) * x**2, 0, Rvir)[0]
+        rho0_nume = nume = cbf * M5R500c
+        rho0_denom = 4. * np.pi * quad(lambda x: theta(x)**(1.0 / (Gamma(cvirs[mc]) - 1.0)) * x**2, 0, R_5R500cs[mc])[0]
+        # This now pegs the gas mass to be equal to cosmic baryon fraction at 5R500c
+        # NOTE: Both rho0_nume and rho_denom need to be changed if the radius is changed
         rho0 = rho0_nume / rho0_denom
         rhogas = lambda rad: rho0 * theta(rad)**(1.0 / (Gamma(cvirs[mc]) - 1.0))
 
         Tg = mu_plasma * mp_kev_by_kms2 * (1. - fnth) * sig2tots[0,:]
         Tgf = interp(rds, Tg) # interpolator for Tgas
-
-        # for computing the enclosed mass out to arbitrary radii
-        rhos, rs = profile_nfw.NFWProfile.fundamentalParameters(masses[mc], cvir, zobs, 'vir')
 
         Ptot = rhogas(rds) * sig2tots[0,:]
         Pth  = Ptot * (1.0 - fnth)
@@ -268,10 +277,10 @@ def gen_obs(cosmo, beta=beta_def, eta=eta_def):
             mass_enc[mc, itR] = quad(lambda x: 4. * np.pi * x**2 * nfw_prof(x, rhos, rs), 0, Rdef)[0]
 
 
-    return np.stack((mass_enc, Tmgasv, Mgasv, YSZv))
+    return np.stack((mass_enc, Tmgasv, Mgasv, YSZv)), cvirs, Rvirs
     # the masses should be same as Mvirs and they're the same for all cosmologies anyway
 
 print("Finished load-in stuff", flush=True)
-    
-data = gen_obs(cosmo, beta=beta_def, eta=eta_def)
-np.save('%s_data.npy' % cname, data)
+
+data, cvirs, Rvirs = gen_obs(cosmo, beta=beta_def, eta=eta_def)
+np.savez('%s_data.npy' % cname, data=data, cvirs=cvirs, Rvirs=Rvirs)
