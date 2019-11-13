@@ -34,7 +34,7 @@ beta_def = 1.0
 eta_def  = 0.7
 Nmah = 9999
 Nradii = 500
-N_r500_mult = 20
+N_r200m_mult = 2
 zi=6.
 zobs = 0.0
 
@@ -81,8 +81,8 @@ cosmo = cosmology.setCosmology(cname)
 cbf = cosmo.Ob0 / cosmo.Om0
 
 radii_definitions = [('vir', 1), ('500c', 1), ('500c', 2), ('500c', 3), ('500c', 4), ('500c', 5),
-                     ('200m', 0.5), ('200m', 0.875), ('200m', 1.0), ('200m', 1.25), ('200m', 1.625),
-                     ('200m', 2.0)]
+                     ('200m', 0.3), ('200m', 0.5), ('200m', 0.875), ('200m', 1.0), ('200m', 1.25),
+                     ('200m', 1.625), ('200m', 2.0)]
 
 
 def zhao_vdb_conc(t, t04):
@@ -149,7 +149,7 @@ def p_2_y(r,p):
     dlogr = np.log(r[2]/r[1])
     for i in range(0,len(r)-1):
         yv[i] = np.sum(p[i+1:]*r[i+1:]**2*dlogr/np.sqrt(r[i+1:]**2-r[i]**2))
-    return sigmaT_by_mec2 * yv # this is in units of h
+    return 2.0 * sigmaT_by_mec2 * yv # this is in units of h
 
 # This outputs in units of kpc^2 / h, standard unit is Mpc^2, verified magnitudes
 def YSZ(yprof, rads, Rx):
@@ -167,14 +167,14 @@ def gen_obs(cosmo, beta=beta_def, eta=eta_def):
 
     n_steps = zi_snap
     
-    rads = np.logspace(np.log10(0.01),np.log10(N_r500_mult), Nradii) # y_SZ goes out to 20x R_500c for LOS integration
+    rads = np.logspace(np.log10(0.01),np.log10(N_r200m_mult), Nradii) # y_SZ goes out to 2x R_200m for LOS integration, close to splashback radius
 
     ds2dt    = np.zeros((n_steps, Nradii))
     sig2tots = np.zeros((n_steps, Nradii))
     sig2nth  = np.zeros((n_steps, Nradii))
     cvirs    = np.zeros(Nmah)
     Rvirs    = np.zeros(Nmah)
-    R_5R500cs= np.zeros(Nmah)
+    R_2R200ms= np.zeros(Nmah)
     # The values that we will return and column_stack
     YSZv     = np.zeros((Nmah, len(radii_definitions)))
     Tmgasv   = np.zeros((Nmah, len(radii_definitions)))
@@ -184,12 +184,12 @@ def gen_obs(cosmo, beta=beta_def, eta=eta_def):
     for mc in range(0,Nmah):
         if(mc % 100 == 0):
             print(mc, flush=True)
-        # get cvir so that we can get R500c
+        # get cvir so that we can get R500c/R200m
         t04_ind = np.where(mah[mc,:] > 0.04*masses[mc])[0][-1]
         cvir = conc_model(t0 - lbtime[0], t0 - lbtime[t04_ind])
-        Mdf, R500c, _ = mass_defs.changeMassDefinition(masses[mc], c=cvir, z=zobs, mdef_in='vir', mdef_out='500c')
-        R_5R500cs[mc] = 5.0*R500c
-        rds  = rads*R500c #convert to physical units; using r500c, this goes out to 20x R500c
+        Mdf, R200m, _ = mass_defs.changeMassDefinition(masses[mc], c=cvir, z=zobs, mdef_in='vir', mdef_out='200m')
+        R_2R200ms[mc] = 2.0*R200m
+        rds  = rads*R200m #convert to physical units; using r200m, this goes out to 8x R200m
         # doing it this way ensures that we're using the same fractional radii for each cluster
 
         # integrate time to z=0 in order to get f_nth profile
@@ -236,7 +236,7 @@ def gen_obs(cosmo, beta=beta_def, eta=eta_def):
         # for computing the enclosed mass out to arbitrary radii
         rhos, rs = profile_nfw.NFWProfile.fundamentalParameters(masses[mc], cvir, zobs, 'vir')
         # need M(<5R500c) for gas mass normalization
-        M5R500c = quad(lambda x: 4. * np.pi * x**2 * nfw_prof(x, rhos, rs), 0, R_5R500cs[mc])[0]
+        M2R200m = quad(lambda x: 4. * np.pi * x**2 * nfw_prof(x, rhos, rs), 0, R_2R200ms[mc])[0]
 
 
         # compute rho_gas profile, use it to compute M_gas within Rdef and T_mgas within Rdef
@@ -245,8 +245,8 @@ def gen_obs(cosmo, beta=beta_def, eta=eta_def):
         phir = lambda rad: -1. * (cvirs[mc] / NFWf(cvirs[mc])) * (np.log(1. + cvirs[mc]*rad/Rvir) / (cvirs[mc]*rad/Rvir))
         theta = lambda rad: 1. + ((Gamma(cvirs[mc]) - 1.) / Gamma(cvirs[mc])) * 3. *eta0(cvirs[mc])**-1 * (phi0 - phir(rad))
 
-        rho0_nume = nume = cbf * M5R500c
-        rho0_denom = 4. * np.pi * quad(lambda x: theta(x)**(1.0 / (Gamma(cvirs[mc]) - 1.0)) * x**2, 0, R_5R500cs[mc])[0]
+        rho0_nume = nume = cbf * M2R200m
+        rho0_denom = 4. * np.pi * quad(lambda x: theta(x)**(1.0 / (Gamma(cvirs[mc]) - 1.0)) * x**2, 0, R_2R200ms[mc])[0]
         # This now pegs the gas mass to be equal to cosmic baryon fraction at 5R500c
         # NOTE: Both rho0_nume and rho_denom need to be changed if the radius is changed
         rho0 = rho0_nume / rho0_denom
@@ -283,4 +283,4 @@ def gen_obs(cosmo, beta=beta_def, eta=eta_def):
 print("Finished load-in stuff", flush=True)
 
 data, cvirs, Rvirs = gen_obs(cosmo, beta=beta_def, eta=eta_def)
-np.savez('%s_data.npy' % cname, data=data, cvirs=cvirs, Rvirs=Rvirs)
+np.savez('%s_data.npz' % cname, data=data, cvirs=cvirs, Rvirs=Rvirs)
