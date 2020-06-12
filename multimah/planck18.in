@@ -1,0 +1,28 @@
+-73423                                       ! iseed
+0.31115                                      ! Omega_0
+0.68885                                      ! Omega_Lambda
+0.6766                                       ! h (= H_0/100)
+0.8102                                       ! sigma8
+0.9665                                       ! nspec
+0.02243	                                     ! Omega_b_h2
+3                                            ! P(k) (1=BBKS, 2=EBW, 3=EH)
+0.0                                          ! WDM filter mass (0.0 = CDM)
+2                                            ! Method           (1=num, 2=fit)
+13.00                                        ! log present day mass (h^{-1}Msun)
+1.0E-4                                       ! flimit = Mmin/M0  (resolution)
+0.0                                          ! redshift
+50.0                                         ! zmax sampling [fiducial = 50.0]
+0.1                                          ! frac_tff      [fiducial = 0.10]
+0.07                                         ! slope         [fiducial = 0.07]
+2.3                                          ! tau(Gyr)      [fiducial = 2.00]
+1.0E-20                                      ! disruption    [fiducial = 0.01]
+0.57                                         ! G0            [fiducial = 0.57]
+0.38                                         ! gamma1        [fiducial = 0.38]
+-0.01                                        ! gamma2        [fiducial =-0.01]
+0.1                                          ! dWmax         [fiducial = 0.10]
+0                                            ! Keep Mhalo fixed  (0=No, 1=Yes)
+1                                            ! Keep Mmin  fixed  (0=No, 1=Yes)
+0                                            ! evolve subhaloes  (0=No, 1=Yes)
+1                                            ! compute Vmax?     (0=No, 1=Yes)
+1                                            ! imode (1=stat, 2=write, 3=both)
+.

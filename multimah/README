@@ -1,0 +1,288 @@
+*********************************************************************
+*                            MultiTree                              *
+*                                                                   *
+*   Author: Frank van den Bosch                    Yale University  *
+*-------------------------------------------------------------------*
+*   Version 1.4                               Release Dec 03, 2013  *
+*********************************************************************
+
+Description:
+------------
+This code computes Ntree merger trees using the method of Parkinson,
+Cole & Helly (2008; hereafter PCH08).
+
+The package consists of the following files:
+- MultiTree.f   : the main program
+- AnalyzeTree.f : subroutines to analyze the trees
+- init.f        : subroutines used for initialization
+- output.f      : subroutines for writing output files
+- cosmo_sub.f   : cosmology subroutines & functions
+- model_mah.f   : subroutines to compute model MAHs
+- quadpack.f    : subroutines from the QuadPack Numerical Package
+- nrecip.f      : subtoutines from Numerical Recipes
+- aux.f         : auxiliary functions and subroutines
+- MultiTree.mke : the make file (used for compiling)
+- MultiTree.in  : an example input file
+- halomasses.dat: an example file listing halo masses (logM)
+
+Compiling: 
+----------
+make -f MultiTree.mke
+
+Running:
+-----------
+MultiTree < MultiTree.in
+
+Plotting results:
+-----------------
+sm> macro read mah.sm
+sm> mkplot
+
+*********************************************************************
+
+The program creates a large number of output files.
+The most relevant for you are:
+
+averMAH.dat     the average MAH
+
+col  1: simple counter
+col  2: redshift
+Col  3: lookbacktime in Gyr
+col  4: log(<M(z)/M_0>
+col  5: sigma of M(z)/M_0 
+col  6: <log(M(z)/M_0)>
+col  7: sigma of log(M(z)/M_0)
+col  8: 16 percentile of M(z)/M_0 distribution
+col  9: median (=50 percentile) of M(z)/M_0 distribution
+col 10: 84 percentile of M(z)/M_0 distribution
+col 11: ignore
+col 12: ignore
+col 13: ignore
+col 14: Number of trees used in averaging
+
+MAH****.dat   individual MAHs
+
+col 1: simple counter
+col 2: redshift
+col 3: lookback time [Gyr]
+col 4: log(M(z)/M_0)
+col 5: log(Vmax(z)/Vvir,0)
+
+*********************************************************************
+
+* Setting the number of MergerTrees.
+
+This is set by the parameter 'Ntree', which has to be set by hand in
+the parameter file `paramfile.h', Each time this is reset, the code
+has to be recompiled.
+
+WARNING: DO NOT CHANGE ANY OTHER PARAMETER IN paramfile.h UNLESS
+         YOU KNOW WHAT YOU ARE DOING!!!
+
+*********************************************************************
+The program can be run in different modes:
+
+* Keep Mhalo fixed (0/1)
+
+Either all merger trees are constructed for the halo mass read in
+in the input file (1) or a list of halo masses is read in from a
+file called `halomasses.dat' (0). These halo masses are always
+to be listed as log[M/(h^{-1}Msun)].
+The user is responsible for making sure that the number of entries
+in `halomasses.dat' is sufficient (i.e., >=Ntree).
+
+----------------------------------------------------------------------
+
+* Keep Mmin fixed (0/1)
+
+Either at each redshift along the merger tree the resolution
+mass is a fixed fraction of the final halo mass (1), or it
+varies as function of redshift according to the function
+`set_minimum_mass' in MultiTree.f (0). In the former case, the
+resolution is specified in the input file (flimit=Mmin/M0).
+
+NOTE: with Mmin/M0 = 1.0E-4 and Mmin fixed a typical merger tree
+      consists of ~1000 trajectories.
+      The number of trajectories scales inverse proportional to flimit.
+      Same for total number of progenitors in the tree
+
+----------------------------------------------------------------------
+
+* evolve subhaloes (0/1)
+
+The code can be run without evolving the subhaloes (0). This is typically
+quite a bit faster.
+
+-----------------------------------------------------------------------
+
+* compute Vmax (0/1)
+
+By choosing this option, in addition to the halo masses the program
+also computes (and stores) the maximum circular velocities of all 
+haloes (host haloes and subhaloes). This typically slows down the 
+program by about a factor of two.
+
+----------------------------------------------------------------------
+
+* SHMF at Low (0) or High (1) resolution
+
+At High resolution, the evolved SHMF is computed using the time resolution
+of the actual merger tree. At low resolution the resampled merger tree
+is used in stead. The latter is significantly faster, but also less
+accurate. The accuracy depends on the value of frac_tff. Tests suggest
+that frac_tff <= 0.1 yields sufficient resolution, but the user should
+test this for him/her self.
+
+NOTE: since v1.2 the Low Resolution version CORRECTLY integrates the
+      mass loss of a subhalo using its *direct* host (i.e., the halo in 
+      which it is first accreted as a subhalo). This results in an enhanced 
+      mass stripping, and is more appropriate. The High Resolution version
+      does NOT use the *direct* subhalo, but the lowest-order host halo.
+      
+NOTE: Since v1.3 this option is NO LONGER AVAILABLE; the Low resolution
+      option is used exclusively.
+
+------------------------------------------------------------------------
+
+* imode (1/2/3).  This allows you to set different output modes
+
+1 = stat : only write files that describe statistics of merger trees
+2 = write: only write the actual merger trees  (`MergerTree****.dat'), 
+           where **** is the number of the tree from 0001 to 9999.
+           IF Ntree>9999 YOU NEED TO ADD EXTRA DIGIT
+3 = both : write both stat-files AND merger trees.
+
+NOTE: if you are varying halo masses, then there will be NO FILES with
+      statistics written (these would be pretty meaningless)...
+
+*********************************************************************
+
+OUTPUT OF MERGER TREES:
+-----------------------
+
+MergerTree****.dat
+timesteps.dat
+
+The merger trees are written to file in an unformatted form.
+To read the merger trees, use:
+
+    OPEN(10,file='MergerTree****.dat',status='OLD',form='UNFORMATTED)
+    READ(10)Nx,Ny
+    READ(10)mergertree
+    CLOSE(10)
+
+    Here mergertree is a DOUBLE array. The maximum size is
+    Nx = Nmaxtraj        (see paramfile.h)
+    Ny = Nzmax           (see paramfile.h)
+   
+
+    Each element in mergertree(i,j) has the following format.
+    i = trajectory number
+    j = timestep
+
+    ooootttttt.MMMMMVVVVxxx 
+
+    tttttt = integer*6 indicating trajectory number 
+     ooooo = integer (unspecified length) indicating order+1
+             If progenitor is main progenitor than order = 0 and thus oooo=1
+             If progenitor is sub-subhalo than order = 2 and thus oooo=3
+    .MMMMM = log(M)/100.0     So if progenitor mass has log(M) = 12.5423
+                              then .MMMMM=.12542           
+     VVVV  = log(V)/10.0      So if progenitor halo as log(V) = 2.325
+                              then VVVV=2325   
+     xxxxx = unspecified length of extra digits (IGNORE) 
+
+NOTE: if the trajectory number expressed by tttttt does NOT coincide
+      with i, then the halo is a subhalo. The trajectory number now
+      indicates the trajectory of its DIRECT parent halo (in this case oooo
+      HAS to be larger than unity). Similarly, if ooooo=1 then it
+      HAS to be the case that the trajectory number tttttt is the same
+      as i.
+
+NOTE: if  ooootttttt.MMMMMVVVVxxx = 0.000000000 then it means that this
+      subhalo is not in existence yet (i.e., its mass is below Mmin(z)
+      at the redshift corresponding to j
+
+NOTE: if you do not opt for the computation of Vmax, VVVV=0000
+If you have run the code with `evolve=YES' (so that the subhaloes are
+evolved to account for mass stripping), then the masses of the subhaloes
+reflect the STRIPPED masses. You can find its mass at accretion by
+finding the timestep j along trajectory i where ooooo=1 for the last time.
+If you have run the code with `evolve='NO', then the masses of the
+subhaloes reflect their mass at accretion.
+
+
+The subroutine `deconstruct' in AnalyzeTree.f shows how to extract
+the order number, the trajectory number, the halo mass and Vmax 
+from the number in mergertree(i,j).
+
+     
+The file `TimeSteps.dat' lists the redshifts and lookbacktimes (in Gyrs)
+of the Ny timesteps used.
+
+*********************************************************************
+
+EXAMPLE:
+
+After compiling the code, make a directory RESULTS/Millenium/Test1
+from the directory where the code is and run the code using the 
+input file  `MultiTree.in'.
+
+This will construct merger trees for 14 different halo masses
+(one per halo mass) covering the range log(M) = 10 - 14.5.
+(listed in halomasses.dat)
+
+The trees adopt a Mmin = Mhost/1.0E+4 
+
+The output files are written to Test1
+
+The output to the screen should look something like
+
+
+  Redshift Sampling: Nz =  327
+  
+            >>> Computing Mass Variance <<<
+  
+            >>> Computing Merger Trees <<< 
+  
+                    Ntree =  14
+  
+ ihalo  Mhalo      Nprog     Ntraj     Nstep  Norder MaxRes  TimeElapsed
+ -----------------------------------------------------------------------
+  MAX VALUES:   40000000    600000
+ -----------------------------------------------------------------------
+     1  10.00      51187      1035      5762       6  -4.00  0h 0m 1.88s
+     2  10.50      47312      1027      6191       6  -4.00  0h 0m 1.12s
+     3  11.00      48369      1112      4554       5  -4.00  0h 0m 1.15s
+     4  11.50      44368      1030      5600       5  -4.00  0h 0m 1.08s
+     5  12.00      42594      1057      6151       6  -4.00  0h 0m 1.04s
+     6  12.50      41907      1091      7073       6  -4.00  0h 0m 1.05s
+     7  13.00      40448      1102      6360       6  -4.00  0h 0m 1.06s
+     8  13.50      40454      1194      4675       6  -4.00  0h 0m 1.06s
+     9  14.00      37503      1139      8181       6  -4.00  0h 0m 1.02s
+    10  14.10      37133      1104      9316       5  -4.00  0h 0m 0.98s
+    11  14.20      36504      1076      9269       5  -4.00  0h 0m 0.97s
+    12  14.30      37246      1158      8225       5  -4.00  0h 0m 1.02s
+    13  14.40      37347      1217      5796       5  -4.00  0h 0m 1.03s
+    14  14.50      37508      1201      8481       5  -4.00  0h 0m 1.03s
+  
+       >>> DONE: program completed succesfully <<<
+
+Total elapsed time:  0h 0m23.41s
+
+--
+
+(Norder in the sixth column is the maximum order of subhalos encountered, 
+while Nstep is a `rough' measure for the number of timesteps used in the 
+CONSTRUCTION of the merger tree. This is NOT the same as the number of 
+timesteps used in the resampling, which is indicated above (Nz=327), and 
+which is the number of redshifts used in mergertree(i,j). MaxRes is the
+maximum resolution (log[Mprog/Mhost]) encountered along the merger tree,
+and TimeElapsed is the wall clock time elapsed during the construction
+and analysis of this merger tree.
+
+
+KNOWN BUGS & PROBLEMS:
+----------------------
+
+* None

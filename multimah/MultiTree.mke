@@ -1,0 +1,19 @@
+# Compile UNIX (SUN) version of software for MultiTree.f
+
+COMPILER = gfortran
+
+FC = gfortran
+
+#FFLAGS = -u -O2 -m32
+FFLAGS = -u -O2 -fPIC -mcmodel=large
+
+OBJECTS  = MultiTree.o AnalyzeTree.o cosmo_sub.o init.o nrecip.o aux.o quadpack.o output.o model_mah.o
+
+MultiTree: ${OBJECTS}
+	 ${COMPILER} -o MultiTree ${OBJECTS} -lm
+
+MultiTree.o: MultiTree.f
+	   ${COMPILER} ${FFLAGS} -c MultiTree.f
+
+${OBJECTS}: paramfile.h
+ 
